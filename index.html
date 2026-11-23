@@ -1,0 +1,2514 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>تحكم روبوت BLE | الالتفاف القوسي والمحركات التفاضلية</title>
+
+  <!-- Arabic & Technical Monospace Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Cairo', 'Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: {
+            navy: {
+              950: '#0b1120',
+              900: '#131c31',
+              850: '#19243d',
+              800: '#1e2c4a',
+            },
+          },
+          boxShadow: {
+            'cyan-glow': '0 0 22px -4px rgba(6, 182, 212, 0.55)',
+            'emerald-glow': '0 0 20px -4px rgba(16, 185, 129, 0.55)',
+            'rose-glow': '0 0 22px -4px rgba(244, 63, 94, 0.55)',
+            'amber-glow': '0 0 20px -4px rgba(245, 158, 11, 0.5)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Minimal Custom Styles for Touch Safety, Sliders & Industrial Grid -->
+  <style>
+    body {
+      background-color: #0b1120;
+      background-image:
+        radial-gradient(circle at 12% 8%, rgba(6, 182, 212, 0.09), transparent 34%),
+        radial-gradient(circle at 88% 92%, rgba(16, 185, 129, 0.08), transparent 34%),
+        linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 26px 26px, 26px 26px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Strictly prevent accidental selection, callouts & scrolling on control areas */
+    .control-surface {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    /* Tactile custom range sliders */
+    input[type="range"].ctrl-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+      touch-action: none;
+    }
+    input[type="range"].ctrl-slider::-webkit-slider-runnable-track {
+      height: 11px;
+      border-radius: 9999px;
+      background: #0b1120;
+      border: 1px solid #293856;
+    }
+    input[type="range"].ctrl-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 26px;
+      width: 26px;
+      border-radius: 9999px;
+      border: 3px solid #0b1120;
+      margin-top: -8px;
+      transition: transform 0.12s ease;
+    }
+    input[type="range"].ctrl-slider.cyan-slider::-webkit-slider-thumb {
+      background: linear-gradient(135deg, #22d3ee, #06b6d4);
+      box-shadow: 0 0 14px rgba(6, 182, 212, 0.65);
+    }
+    input[type="range"].ctrl-slider.emerald-slider::-webkit-slider-thumb {
+      background: linear-gradient(135deg, #34d399, #10b981);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.65);
+    }
+    input[type="range"].ctrl-slider:active::-webkit-slider-thumb {
+      transform: scale(1.14);
+    }
+    input[type="range"].ctrl-slider::-moz-range-track {
+      height: 11px;
+      border-radius: 9999px;
+      background: #0b1120;
+      border: 1px solid #293856;
+    }
+    input[type="range"].ctrl-slider.cyan-slider::-moz-range-thumb {
+      height: 26px;
+      width: 26px;
+      border-radius: 9999px;
+      background: linear-gradient(135deg, #22d3ee, #06b6d4);
+      border: 3px solid #0b1120;
+      box-shadow: 0 0 14px rgba(6, 182, 212, 0.65);
+    }
+    input[type="range"].ctrl-slider.emerald-slider::-moz-range-thumb {
+      height: 26px;
+      width: 26px;
+      border-radius: 9999px;
+      background: linear-gradient(135deg, #34d399, #10b981);
+      border: 3px solid #0b1120;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.65);
+    }
+
+    /* Joystick elastic return animation */
+    .joystick-spring {
+      transition: transform 0.2s cubic-bezier(0.22, 1.32, 0.36, 1);
+    }
+
+    /* Dark scrollbar */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(11, 17, 32, 0.7);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen text-slate-100 font-sans antialiased flex flex-col overflow-x-hidden">
+
+  <!-- ==================== TOP COMPACT HEADER BAR ==================== -->
+  <header class="sticky top-0 z-30 bg-navy-950/90 backdrop-blur-md border-b border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+
+      <!-- App Title & Connection Status Badge -->
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/15 border border-cyan-500/35 flex items-center justify-center shrink-0 shadow-cyan-glow">
+          <svg class="w-6 h-6 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="7" width="12" height="10" rx="2.5"></rect>
+            <path d="M12 7V4"></path>
+            <circle cx="12" cy="3" r="1"></circle>
+            <circle cx="9.5" cy="11.5" r="1" fill="currentColor"></circle>
+            <circle cx="14.5" cy="11.5" r="1" fill="currentColor"></circle>
+            <path d="M9.5 14.5h5"></path>
+            <path d="M4 10v4"></path>
+            <path d="M20 10v4"></path>
+          </svg>
+        </div>
+
+        <div class="min-w-0">
+          <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white truncate">
+            تحكم روبوت <span class="text-cyan-400 font-mono">BLE</span>
+          </h1>
+          <div class="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-400 mt-0.5">
+            <span id="statusDot" class="w-2 h-2 rounded-full bg-slate-500 shrink-0"></span>
+            <span id="statusText" class="truncate max-w-[140px] sm:max-w-[230px]">غير متصل</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Header Actions -->
+      <div class="flex items-center gap-1.5 sm:gap-2 mr-auto sm:mr-0">
+        <!-- Quick Protocol Toggle Badge -->
+        <button id="quickProtocolBtn" type="button"
+          class="hidden sm:flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-all active:scale-95"
+          title="تبديل سريع بين بروتوكول خلط المحركات M:L,R وبروتوكول الأحرف القياسي">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span id="quickProtocolLabel" class="font-mono">M:L,R</span>
+        </button>
+
+        <!-- Demo Mode Toggle -->
+        <button id="demoToggleBtn" type="button"
+          class="px-2.5 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-bold border border-slate-700 bg-navy-900 text-slate-300 hover:bg-navy-800 hover:text-white transition-all flex items-center gap-1.5 active:scale-95"
+          title="تفعيل وضع التجربة لاختبار التحكم والمحركات بدون اتصال حقيقي">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>وضع التجربة</span>
+        </button>
+
+        <!-- Connect / Disconnect BLE Button -->
+        <button id="connectBtn" type="button"
+          class="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-l from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-navy-950 shadow-cyan-glow transition-all flex items-center gap-1.5 active:scale-95">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m7 7 10 10-5 5V2l5 5L7 17"></path>
+          </svg>
+          <span id="connectBtnText">اتصال BLE</span>
+        </button>
+
+        <!-- Settings Icon Button -->
+        <button id="openSettingsBtn" type="button" aria-label="الإعدادات"
+          class="p-2 sm:p-2.5 rounded-xl bg-navy-900 border border-slate-700/80 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/50 transition-all active:scale-95">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== BLE COMPATIBILITY / ERROR ALERT BANNER ==================== -->
+  <div id="alertBanner" class="hidden max-w-6xl w-full mx-auto px-3 sm:px-5 pt-3">
+    <div class="rounded-2xl bg-amber-500/10 border border-amber-500/40 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-start gap-2.5">
+        <svg class="w-5 h-5 text-amber-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <div class="text-xs sm:text-sm text-amber-100 leading-relaxed">
+          <p id="alertTitle" class="font-bold text-amber-300">تنبيه حول Web Bluetooth</p>
+          <p id="alertMessage" class="text-amber-200/90 mt-0.5"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
+        <button id="bannerDemoBtn" type="button"
+          class="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-xs font-bold transition">
+          تشغيل وضع التجربة
+        </button>
+        <button id="closeAlertBtn" type="button" aria-label="إغلاق"
+          class="p-1.5 rounded-lg text-amber-300/70 hover:text-amber-200 hover:bg-amber-500/15 transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-5 py-3.5 flex flex-col gap-3.5">
+
+    <!-- ==================== LIVE VISUAL MOTOR & ARC TELEMETRY STRIP ==================== -->
+    <section class="rounded-2xl bg-navy-900 border border-slate-800/90 px-3.5 py-3 shadow-xl">
+      <!-- Physical Left-to-Right Spatial Motor Layout (Left Wheel on Left, Right Wheel on Right) -->
+      <div class="grid grid-cols-12 gap-2.5 sm:gap-4 items-center" dir="ltr">
+
+        <!-- Left Motor (L) Live Gauge -->
+        <div class="col-span-4 flex flex-col gap-1.5">
+          <div class="flex items-baseline justify-between gap-1">
+            <span class="text-[11px] sm:text-xs font-bold text-slate-300 font-sans">العجلة اليسرى <span class="font-mono text-cyan-400">(L)</span></span>
+            <span id="leftMotorVal" class="font-mono text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+          </div>
+          <!-- Center-Zero Bidirectional PWM Bar -->
+          <div class="relative h-3 rounded-full bg-navy-950 border border-slate-800 overflow-hidden">
+            <div class="absolute left-1/2 top-0 bottom-0 w-px bg-slate-600/80 z-10"></div>
+            <div id="leftMotorBar" class="absolute top-0 bottom-0 rounded-full transition-all duration-75 bg-emerald-400" style="left: 50%; width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Center Movement State & Active Protocol/Packet Badge -->
+        <div class="col-span-4 flex flex-col items-center justify-center text-center px-1 border-x border-slate-800/80" dir="rtl">
+          <div id="motionStateLabel" class="text-xs sm:text-sm font-extrabold text-slate-200 truncate max-w-full">
+            توقف ■
+          </div>
+          <div class="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+            <span id="livePacketPill" dir="ltr" class="px-2 py-0.5 rounded-md bg-navy-950 border border-slate-800 font-mono text-[11px] font-bold text-cyan-400">
+              M:0,0
+            </span>
+            <button id="mobileProtocolBtn" type="button"
+              class="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 font-mono text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/25 transition active:scale-95"
+              title="انقر لتبديل البروتوكول">
+              <span id="mobileProtocolLabel">خلط M:L,R</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Motor (R) Live Gauge -->
+        <div class="col-span-4 flex flex-col gap-1.5">
+          <div class="flex items-baseline justify-between gap-1">
+            <span id="rightMotorVal" class="font-mono text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+            <span class="text-[11px] sm:text-xs font-bold text-slate-300 font-sans"><span class="font-mono text-cyan-400">(R)</span> العجلة اليمنى</span>
+          </div>
+          <!-- Center-Zero Bidirectional PWM Bar -->
+          <div class="relative h-3 rounded-full bg-navy-950 border border-slate-800 overflow-hidden">
+            <div class="absolute left-1/2 top-0 bottom-0 w-px bg-slate-600/80 z-10"></div>
+            <div id="rightMotorBar" class="absolute top-0 bottom-0 rounded-full transition-all duration-75 bg-emerald-400" style="left: 50%; width: 0%;"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================== PRIMARY CONTROLS & TUNING GRID ==================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 landscape:grid-cols-12 gap-3.5 items-stretch">
+
+      <!-- ===== DRIVING PAD CARD (3 SWITCHABLE MODES) ===== -->
+      <section class="lg:col-span-7 landscape:col-span-7 rounded-2xl bg-navy-900 border border-slate-800/90 p-3.5 sm:p-4 flex flex-col justify-between shadow-xl">
+
+        <!-- Segmented 3-Mode Selector Tabs -->
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3.5">
+          <div class="w-full sm:w-auto grid grid-cols-3 p-1 rounded-xl bg-navy-950 border border-slate-800 gap-1">
+            <button id="tabMultitouch" type="button" data-mode="multitouch"
+              class="mode-tab px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center">
+              لمس متعدد
+            </button>
+            <button id="tabDpad8" type="button" data-mode="dpad8"
+              class="mode-tab px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center">
+              8 اتجاهات
+            </button>
+            <button id="tabJoystick" type="button" data-mode="joystick"
+              class="mode-tab px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center">
+              جويستيك
+            </button>
+          </div>
+
+          <!-- Instant Emergency Stop Mini-Button -->
+          <button id="globalStopBtn" type="button"
+            class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/50 text-rose-300 text-xs font-extrabold transition active:scale-95">
+            <span class="w-2.5 h-2.5 rounded-sm bg-rose-400"></span>
+            <span>توقف فوري</span>
+          </button>
+        </div>
+
+        <!-- ==================== MODE 1: MULTI-TOUCH CAR DRIVE ==================== -->
+        <div id="panelMultitouch" class="flex-1 flex flex-col justify-center py-1 control-surface">
+          <!-- Spatial LTR layout: Left Thumb = Forward/Backward Pedals, Right Thumb = Left/Right Steering -->
+          <div class="grid grid-cols-12 gap-3 sm:gap-4 items-center w-full" dir="ltr">
+
+            <!-- LEFT THUMB: Throttle (Forward / Backward) -->
+            <div class="col-span-5 flex flex-col gap-3">
+              <div class="text-center text-[11px] font-bold text-slate-400 font-sans">دواسة الحركة</div>
+
+              <button type="button" data-mt="forward"
+                class="mt-btn h-24 sm:h-28 rounded-2xl bg-navy-850 border-2 border-slate-700/90 hover:border-cyan-500/50 text-slate-200 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+                <svg class="w-9 h-9 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m18 15-6-6-6 6"></path>
+                </svg>
+                <span class="text-xs font-extrabold pointer-events-none font-sans">أمام</span>
+              </button>
+
+              <button type="button" data-mt="backward"
+                class="mt-btn h-24 sm:h-28 rounded-2xl bg-navy-850 border-2 border-slate-700/90 hover:border-amber-500/50 text-slate-200 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+                <svg class="w-9 h-9 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+                <span class="text-xs font-extrabold pointer-events-none font-sans">خلف</span>
+              </button>
+            </div>
+
+            <!-- CENTER: Emergency Brake & Arc Combo Hint -->
+            <div class="col-span-2 flex flex-col items-center justify-center gap-2">
+              <button id="mtStopBtn" type="button"
+                class="w-full h-16 sm:h-20 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border-2 border-rose-500/60 text-rose-400 flex flex-col items-center justify-center gap-1 shadow-lg transition-all active:scale-95 control-surface"
+                title="توقف فوري">
+                <svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2.5"></rect>
+                </svg>
+                <span class="text-[10px] font-extrabold font-sans pointer-events-none">توقف</span>
+              </button>
+            </div>
+
+            <!-- RIGHT THUMB: Steering (Left / Right) -->
+            <div class="col-span-5 flex flex-col gap-3">
+              <div class="text-center text-[11px] font-bold text-slate-400 font-sans">توجيه الالتفاف</div>
+
+              <div class="grid grid-cols-2 gap-2.5 sm:gap-3">
+                <button type="button" data-mt="left"
+                  class="mt-btn h-36 sm:h-40 rounded-2xl bg-navy-850 border-2 border-slate-700/90 hover:border-emerald-500/50 text-slate-200 flex flex-col items-center justify-center gap-1.5 shadow-lg transition-all duration-75 control-surface">
+                  <svg class="w-9 h-9 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m15 18-6-6 6-6"></path>
+                  </svg>
+                  <span class="text-xs font-extrabold pointer-events-none font-sans">يسار</span>
+                </button>
+
+                <button type="button" data-mt="right"
+                  class="mt-btn h-36 sm:h-40 rounded-2xl bg-navy-850 border-2 border-slate-700/90 hover:border-emerald-500/50 text-slate-200 flex flex-col items-center justify-center gap-1.5 shadow-lg transition-all duration-75 control-surface">
+                  <svg class="w-9 h-9 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m9 18 6-6-6-6"></path>
+                  </svg>
+                  <span class="text-xs font-extrabold pointer-events-none font-sans">يمين</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <p class="text-[11px] text-slate-400 text-center mt-3.5 leading-relaxed">
+            اضغط <strong class="text-cyan-400">أمام</strong> + <strong class="text-emerald-400">يمين/يسار</strong> معاً بإبهاميك للالتفاف القوسي السلس — كما يدعم لوحة المفاتيح (<span class="font-mono text-slate-300">WASD</span> أو الأسهم معاً).
+          </p>
+        </div>
+
+        <!-- ==================== MODE 2: 8-WAY D-PAD WITH ARC TURNS ==================== -->
+        <div id="panelDpad8" class="hidden flex-1 flex flex-col items-center justify-center py-1 control-surface">
+          <div class="grid grid-cols-3 gap-2.5 sm:gap-3 w-full max-w-[320px] sm:max-w-[345px]" dir="ltr">
+
+            <!-- Forward-Left Arc -->
+            <button type="button" data-d8="fl"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850/90 border border-slate-700/90 hover:border-emerald-500/50 text-emerald-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 19v-5a7 7 0 0 0-7-7H5"></path>
+                <polyline points="9 3 5 7 9 11"></polyline>
+              </svg>
+              <span class="text-[10px] sm:text-[11px] font-bold text-slate-300 font-sans pointer-events-none">قوس يسار</span>
+            </button>
+
+            <!-- Forward Straight -->
+            <button type="button" data-d8="f"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850 border border-slate-600/90 hover:border-cyan-500/60 text-cyan-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-8 h-8 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19V5"></path>
+                <polyline points="6 11 12 5 18 11"></polyline>
+              </svg>
+              <span class="text-[11px] font-bold text-slate-200 font-sans pointer-events-none">أمام</span>
+            </button>
+
+            <!-- Forward-Right Arc -->
+            <button type="button" data-d8="fr"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850/90 border border-slate-700/90 hover:border-emerald-500/50 text-emerald-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 19v-5a7 7 0 0 1 7-7h4"></path>
+                <polyline points="15 3 19 7 15 11"></polyline>
+              </svg>
+              <span class="text-[10px] sm:text-[11px] font-bold text-slate-300 font-sans pointer-events-none">قوس يمين</span>
+            </button>
+
+            <!-- Spin Left -->
+            <button type="button" data-d8="l"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850 border border-slate-600/90 hover:border-cyan-500/60 text-cyan-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5"></path>
+                <polyline points="11 6 5 12 11 18"></polyline>
+              </svg>
+              <span class="text-[11px] font-bold text-slate-200 font-sans pointer-events-none">دوران يسار</span>
+            </button>
+
+            <!-- Center Emergency Stop -->
+            <button id="d8StopBtn" type="button"
+              class="h-20 sm:h-24 rounded-2xl bg-rose-500/15 border-2 border-rose-500/60 hover:bg-rose-500/25 text-rose-400 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 active:scale-95 active:shadow-rose-glow control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2.5"></rect>
+              </svg>
+              <span class="text-[11px] font-extrabold font-sans pointer-events-none">توقف</span>
+            </button>
+
+            <!-- Spin Right -->
+            <button type="button" data-d8="r"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850 border border-slate-600/90 hover:border-cyan-500/60 text-cyan-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"></path>
+                <polyline points="13 6 19 12 13 18"></polyline>
+              </svg>
+              <span class="text-[11px] font-bold text-slate-200 font-sans pointer-events-none">دوران يمين</span>
+            </button>
+
+            <!-- Backward-Left Arc -->
+            <button type="button" data-d8="bl"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850/90 border border-slate-700/90 hover:border-amber-500/50 text-amber-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 5v5a7 7 0 0 1-7 7H5"></path>
+                <polyline points="9 13 5 17 9 21"></polyline>
+              </svg>
+              <span class="text-[10px] sm:text-[11px] font-bold text-slate-300 font-sans pointer-events-none">خلف-يسار</span>
+            </button>
+
+            <!-- Backward Straight -->
+            <button type="button" data-d8="b"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850 border border-slate-600/90 hover:border-amber-500/60 text-amber-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-8 h-8 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14"></path>
+                <polyline points="6 13 12 19 18 13"></polyline>
+              </svg>
+              <span class="text-[11px] font-bold text-slate-200 font-sans pointer-events-none">خلف</span>
+            </button>
+
+            <!-- Backward-Right Arc -->
+            <button type="button" data-d8="br"
+              class="d8-btn h-20 sm:h-24 rounded-2xl bg-navy-850/90 border border-slate-700/90 hover:border-amber-500/50 text-amber-300 flex flex-col items-center justify-center gap-1 shadow-lg transition-all duration-75 control-surface">
+              <svg class="w-7 h-7 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 5v5a7 7 0 0 0 7 7h4"></path>
+                <polyline points="15 13 19 17 15 21"></polyline>
+              </svg>
+              <span class="text-[10px] sm:text-[11px] font-bold text-slate-300 font-sans pointer-events-none">خلف-يمين</span>
+            </button>
+
+          </div>
+        </div>
+
+        <!-- ==================== MODE 3: ANALOG JOYSTICK ==================== -->
+        <div id="panelJoystick" class="hidden flex-1 flex flex-col items-center justify-center py-1 control-surface">
+
+          <!-- Virtual Analog Joystick Pad with Live Vector SVG -->
+          <div id="joystickBase"
+            class="relative w-56 h-56 sm:w-64 sm:h-64 rounded-full bg-navy-950 border-2 border-slate-700/80 shadow-inner flex items-center justify-center cursor-grab active:cursor-grabbing control-surface">
+
+            <!-- Concentric Guide Rings & Deadzone Circle -->
+            <div class="absolute inset-4 rounded-full border border-slate-800/90 pointer-events-none"></div>
+            <div class="absolute inset-11 rounded-full border border-dashed border-slate-800/90 pointer-events-none"></div>
+            <div class="absolute w-7 h-7 rounded-full border border-cyan-500/20 bg-cyan-500/5 pointer-events-none"></div>
+            <div class="absolute inset-x-4 top-1/2 h-px bg-slate-800/80 pointer-events-none"></div>
+            <div class="absolute inset-y-4 left-1/2 w-px bg-slate-800/80 pointer-events-none"></div>
+
+            <!-- Live Trajectory / Vector SVG Overlay -->
+            <svg id="joystickVectorSvg" viewBox="-100 -100 200 200" class="absolute inset-0 w-full h-full pointer-events-none">
+              <path id="joyArcPath" d="" fill="none" stroke="rgba(16, 185, 129, 0.45)" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 4" />
+              <line id="joyVectorLine" x1="0" y1="0" x2="0" y2="0" stroke="rgba(34, 211, 238, 0.85)" stroke-width="3" stroke-linecap="round" />
+            </svg>
+
+            <!-- Directional Labels -->
+            <span class="absolute top-2 text-[10px] font-mono text-slate-500 pointer-events-none">+Y</span>
+            <span class="absolute bottom-2 text-[10px] font-mono text-slate-500 pointer-events-none">-Y</span>
+            <span class="absolute left-2.5 text-[10px] font-mono text-slate-500 pointer-events-none">-X</span>
+            <span class="absolute right-2.5 text-[10px] font-mono text-slate-500 pointer-events-none">+X</span>
+
+            <!-- Movable Stick Puck -->
+            <div id="joystickPuck"
+              class="relative z-10 w-20 h-20 rounded-full bg-gradient-to-br from-cyan-400 to-cyan-600 border-4 border-navy-950 shadow-cyan-glow flex items-center justify-center pointer-events-none joystick-spring">
+              <div class="w-7 h-7 rounded-full bg-navy-950/35 border border-white/30"></div>
+            </div>
+          </div>
+
+          <!-- X / Y & Magnitude Readout -->
+          <div class="mt-3.5 flex items-center gap-2.5 font-mono text-xs" dir="ltr">
+            <div class="px-3 py-1.5 rounded-xl bg-navy-950 border border-slate-800 flex items-center gap-1.5">
+              <span class="text-slate-500">X:</span>
+              <span id="joyXVal" class="text-cyan-400 font-bold w-8 text-right">0</span>
+            </div>
+            <div class="px-3 py-1.5 rounded-xl bg-navy-950 border border-slate-800 flex items-center gap-1.5">
+              <span class="text-slate-500">Y:</span>
+              <span id="joyYVal" class="text-emerald-400 font-bold w-8 text-right">0</span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ===== TUNING BAR (MAX SPEED + ARC RATIO) & 4 QUICK MACROS ===== -->
+      <section class="lg:col-span-5 landscape:col-span-5 flex flex-col gap-3.5">
+
+        <!-- Speed & Arc Tuning Card -->
+        <div class="rounded-2xl bg-navy-900 border border-slate-800/90 p-4 shadow-xl space-y-4">
+
+          <!-- 1. Max Speed Slider (0 - 255) -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 14l4-4"></path>
+                    <path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 class="text-xs sm:text-sm font-bold text-white">السرعة القصوى (PWM)</h2>
+                </div>
+              </div>
+              <div class="flex items-baseline gap-1.5 font-mono" dir="ltr">
+                <span id="speedValueText" class="text-lg sm:text-xl font-extrabold text-cyan-400">200</span>
+                <span id="speedPercentText" class="text-[11px] text-slate-400">(78%)</span>
+              </div>
+            </div>
+
+            <div class="py-1" dir="ltr">
+              <input id="speedSlider" type="range" min="0" max="255" value="200" class="ctrl-slider cyan-slider w-full" />
+            </div>
+
+            <div class="grid grid-cols-4 gap-1.5 mt-1.5" dir="ltr">
+              <button type="button" data-speed="80" class="speed-preset-btn py-1 rounded-lg bg-navy-950 hover:bg-navy-800 border border-slate-800 text-[11px] font-mono text-slate-300 transition active:scale-95">30%</button>
+              <button type="button" data-speed="140" class="speed-preset-btn py-1 rounded-lg bg-navy-950 hover:bg-navy-800 border border-slate-800 text-[11px] font-mono text-slate-300 transition active:scale-95">55%</button>
+              <button type="button" data-speed="200" class="speed-preset-btn py-1 rounded-lg bg-navy-950 hover:bg-navy-800 border border-slate-800 text-[11px] font-mono text-slate-300 transition active:scale-95">78%</button>
+              <button type="button" data-speed="255" class="speed-preset-btn py-1 rounded-lg bg-navy-950 hover:bg-navy-800 border border-slate-800 text-[11px] font-mono text-cyan-400 font-bold transition active:scale-95">MAX</button>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800/80"></div>
+
+          <!-- 2. Arc Ratio Slider (0% - 80%) -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M7 20v-6a7 7 0 0 1 7-7h5"></path>
+                    <polyline points="15 3 19 7 15 11"></polyline>
+                  </svg>
+                </div>
+                <div>
+                  <h2 class="text-xs sm:text-sm font-bold text-white">نعومة القوس (نسبة العجلة الداخلية)</h2>
+                  <p id="arcHintText" class="text-[10px] text-emerald-300/80">قوس متوازن — سرعة الداخلية 45%</p>
+                </div>
+              </div>
+              <div class="font-mono" dir="ltr">
+                <span id="arcRatioText" class="text-lg sm:text-xl font-extrabold text-emerald-400">45%</span>
+              </div>
+            </div>
+
+            <div class="py-1" dir="ltr">
+              <input id="arcRatioSlider" type="range" min="0" max="80" step="5" value="45" class="ctrl-slider emerald-slider w-full" />
+            </div>
+
+            <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+              <span>0% (التفاف حاد)</span>
+              <span>45% (متوازن)</span>
+              <span>80% (قوس واسع)</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 4 Customizable Quick Action Macros -->
+        <div class="flex-1 rounded-2xl bg-navy-900 border border-slate-800/90 p-4 shadow-xl flex flex-col">
+          <div class="flex items-center justify-between mb-2.5">
+            <h2 class="text-xs sm:text-sm font-bold text-white">أوامر سريعة (Macros)</h2>
+            <span class="text-[10px] text-slate-400">قابلة للتخصيص من الإعدادات</span>
+          </div>
+          <div id="actionButtonsGrid" class="grid grid-cols-2 gap-2.5 flex-1">
+            <!-- Dynamically rendered -->
+          </div>
+        </div>
+
+      </section>
+    </div>
+
+    <!-- ==================== COLLAPSIBLE SERIAL MONITOR (TX/RX) ==================== -->
+    <section class="rounded-2xl bg-navy-900 border border-slate-800/90 overflow-hidden shadow-xl">
+
+      <!-- Header -->
+      <div class="px-4 py-2.5 bg-navy-950/80 border-b border-slate-800/90 flex flex-wrap items-center justify-between gap-2">
+        <button id="toggleTerminalBtn" type="button" class="flex items-center gap-2 text-right group">
+          <svg id="terminalChevron" class="w-4 h-4 text-slate-400 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+          <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          <span class="text-xs sm:text-sm font-bold text-slate-200 group-hover:text-white">مراقب البيانات (Serial Monitor)</span>
+        </button>
+
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 text-[11px] font-mono bg-navy-900 px-2.5 py-1 rounded-lg border border-slate-800" dir="ltr">
+            <span class="text-cyan-400">TX: <b id="txCount">0</b></span>
+            <span class="text-slate-600">|</span>
+            <span class="text-emerald-400">RX: <b id="rxCount">0</b></span>
+          </div>
+          <button id="clearTerminalBtn" type="button"
+            class="px-2.5 py-1 rounded-lg bg-navy-900 hover:bg-navy-800 border border-slate-700/80 text-xs font-semibold text-slate-300 hover:text-white transition">
+            مسح
+          </button>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div id="terminalBody" class="flex flex-col">
+        <div id="terminalOutput" dir="ltr"
+          class="h-40 sm:h-48 overflow-y-auto p-3 font-mono text-xs leading-relaxed bg-navy-950/90 space-y-1 custom-scroll">
+        </div>
+
+        <form id="manualSendForm" class="p-2.5 bg-navy-900 border-t border-slate-800 flex items-center gap-2">
+          <input id="manualCmdInput" type="text" dir="ltr" autocomplete="off"
+            placeholder="أرسل أمراً يدوياً... (مثال: M:200,90 أو I أو STATUS)"
+            class="flex-1 px-3 py-2 rounded-xl bg-navy-950 border border-slate-700/80 focus:border-cyan-500 focus:outline-none text-xs sm:text-sm font-mono text-slate-100 placeholder:text-slate-500 placeholder:font-sans placeholder:text-right" />
+          <button type="submit"
+            class="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs sm:text-sm font-bold transition active:scale-95 shrink-0">
+            إرسال
+          </button>
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== SETTINGS MODAL ==================== -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-navy-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-navy-900 border border-slate-700/80 shadow-2xl flex flex-col overflow-hidden">
+
+      <!-- Modal Header -->
+      <div class="px-5 py-4 bg-navy-950/75 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 class="text-base sm:text-lg font-extrabold text-white">إعدادات BLE وبروتوكول الالتفاف القوسي</h2>
+          <p class="text-xs text-slate-400 mt-0.5">ضبط الشريحة، عناوين UUID، ونظام الأوامر المرسلة للروبوت</p>
+        </div>
+        <button id="closeSettingsBtn" type="button" aria-label="إغلاق"
+          class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Scrollable Content -->
+      <div class="p-5 overflow-y-auto space-y-6 custom-scroll">
+
+        <!-- Section 1: Output Protocol Selection -->
+        <div class="space-y-3">
+          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-emerald-400"></span>
+            بروتوكول إرسال أوامر الحركة (Output Protocol)
+          </h3>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="p-3.5 rounded-xl bg-navy-950 border border-slate-700 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-500/10 cursor-pointer transition">
+              <div class="flex items-center gap-2">
+                <input type="radio" name="protocolMode" value="differential" class="accent-emerald-500 w-4 h-4" />
+                <span class="text-xs sm:text-sm font-extrabold text-white">خلط المحركات (<span class="font-mono text-emerald-400">M:L,R</span>)</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                الأفضل للالتفاف القوسي الناعم. يحسب سرعة اليسار واليمين (-255 إلى 255) ويرسلها مباشرة مثل <span class="font-mono text-cyan-300">M:200,90</span>.
+              </p>
+            </label>
+
+            <label class="p-3.5 rounded-xl bg-navy-950 border border-slate-700 has-[:checked]:border-cyan-500 has-[:checked]:bg-cyan-500/10 cursor-pointer transition">
+              <div class="flex items-center gap-2">
+                <input type="radio" name="protocolMode" value="chars" class="accent-cyan-500 w-4 h-4" />
+                <span class="text-xs sm:text-sm font-extrabold text-white">أحرف قياسية (8 اتجاهات)</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                يرسل أحرفاً مفردة (<span class="font-mono text-cyan-300">F,B,L,R,S</span> و <span class="font-mono text-emerald-300">G,I,H,J</span> للأقواس) + <span class="font-mono">V200</span> للسرعة و <span class="font-mono">J:x,y</span> للجويستيك.
+              </p>
+            </label>
+          </div>
+        </div>
+
+        <!-- Section 2: BLE Hardware Preset & UUIDs -->
+        <div class="space-y-3">
+          <h3 class="text-sm font-bold text-cyan-400 flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-cyan-400"></span>
+            إعدادات شريحة BLE (GATT UUIDs)
+          </h3>
+
+          <div>
+            <label for="blePresetSelect" class="block text-xs font-semibold text-slate-300 mb-1.5">اختر نوع الشريحة (Preset)</label>
+            <select id="blePresetSelect"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm text-slate-100">
+              <option value="hm10">HM-10 / AT-09 / JDY-08 (FFE0 / FFE1)</option>
+              <option value="esp32">ESP32 / Nordic UART Service (NUS)</option>
+              <option value="custom">مخصص (Custom UUID)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3" dir="ltr">
+            <div>
+              <label for="serviceUuidInput" class="block text-[11px] font-mono text-slate-400 mb-1">Service UUID</label>
+              <input id="serviceUuidInput" type="text"
+                class="w-full px-3 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-mono text-cyan-300" />
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="txUuidInput" class="block text-[11px] font-mono text-slate-400 mb-1">TX Characteristic UUID (Write)</label>
+                <input id="txUuidInput" type="text"
+                  class="w-full px-3 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-mono text-cyan-300" />
+              </div>
+              <div>
+                <label for="rxUuidInput" class="block text-[11px] font-mono text-slate-400 mb-1">RX Characteristic UUID (Notify)</label>
+                <input id="rxUuidInput" type="text"
+                  class="w-full px-3 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-mono text-emerald-300" />
+              </div>
+            </div>
+          </div>
+
+          <label class="flex items-center justify-between p-3 rounded-xl bg-navy-950/75 border border-slate-800 cursor-pointer">
+            <div>
+              <span class="text-xs sm:text-sm font-bold text-slate-200 block">إضافة سطر جديد (<span class="font-mono text-cyan-400">\n</span>) بنهاية كل أمر</span>
+              <span class="text-[11px] text-slate-400">موصى به عند استخدام <span class="font-mono">readStringUntil('\n')</span> في Arduino/ESP32</span>
+            </div>
+            <input id="appendNewlineCheckbox" type="checkbox" class="w-5 h-5 accent-cyan-500 rounded cursor-pointer shrink-0 mr-3" />
+          </label>
+        </div>
+
+        <!-- Section 3: 8-Direction Character Commands & Prefixes -->
+        <div class="space-y-3">
+          <h3 class="text-sm font-bold text-cyan-400 flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-cyan-400"></span>
+            تخصيص أوامر الـ 8 اتجاهات والبادئات
+          </h3>
+
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            <div>
+              <label for="cmdForward" class="block text-[11px] text-slate-400 mb-1">أمام (F)</label>
+              <input id="cmdForward" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-white" />
+            </div>
+            <div>
+              <label for="cmdBackward" class="block text-[11px] text-slate-400 mb-1">خلف (B)</label>
+              <input id="cmdBackward" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-white" />
+            </div>
+            <div>
+              <label for="cmdLeft" class="block text-[11px] text-slate-400 mb-1">يسار (L)</label>
+              <input id="cmdLeft" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-white" />
+            </div>
+            <div>
+              <label for="cmdRight" class="block text-[11px] text-slate-400 mb-1">يمين (R)</label>
+              <input id="cmdRight" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-white" />
+            </div>
+            <div class="col-span-2 sm:col-span-1">
+              <label for="cmdStop" class="block text-[11px] text-rose-400 mb-1">توقف (S)</label>
+              <input id="cmdStop" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-rose-500/40 focus:border-rose-500 focus:outline-none text-sm font-mono text-center text-rose-300" />
+            </div>
+
+            <!-- 4 Diagonal Arc Commands -->
+            <div>
+              <label for="cmdFL" class="block text-[11px] text-emerald-400 mb-1">قوس أمام-يسار</label>
+              <input id="cmdFL" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-emerald-500/35 focus:border-emerald-400 focus:outline-none text-sm font-mono text-center text-emerald-300" />
+            </div>
+            <div>
+              <label for="cmdFR" class="block text-[11px] text-emerald-400 mb-1">قوس أمام-يمين</label>
+              <input id="cmdFR" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-emerald-500/35 focus:border-emerald-400 focus:outline-none text-sm font-mono text-center text-emerald-300" />
+            </div>
+            <div>
+              <label for="cmdBL" class="block text-[11px] text-amber-400 mb-1">قوس خلف-يسار</label>
+              <input id="cmdBL" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-amber-500/35 focus:border-amber-400 focus:outline-none text-sm font-mono text-center text-amber-300" />
+            </div>
+            <div>
+              <label for="cmdBR" class="block text-[11px] text-amber-400 mb-1">قوس خلف-يمين</label>
+              <input id="cmdBR" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-amber-500/35 focus:border-amber-400 focus:outline-none text-sm font-mono text-center text-amber-300" />
+            </div>
+            <div class="col-span-2 sm:col-span-1">
+              <label for="cmdSpeedPrefix" class="block text-[11px] text-slate-400 mb-1">بادئة السرعة</label>
+              <input id="cmdSpeedPrefix" type="text" dir="ltr" class="w-full px-2.5 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-white" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label for="cmdMotorPrefix" class="block text-[11px] text-slate-400 mb-1">بادئة خلط المحركات (مثل M:)</label>
+              <input id="cmdMotorPrefix" type="text" dir="ltr" class="w-full px-3 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-emerald-300" />
+            </div>
+            <div>
+              <label for="cmdJoystickPrefix" class="block text-[11px] text-slate-400 mb-1">بادئة الجويستيك (مثل J:)</label>
+              <input id="cmdJoystickPrefix" type="text" dir="ltr" class="w-full px-3 py-2 rounded-xl bg-navy-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-sm font-mono text-center text-cyan-300" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: 4 Quick Action Macros -->
+        <div class="space-y-3">
+          <h3 class="text-sm font-bold text-cyan-400 flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-cyan-400"></span>
+            تخصيص الأزرار السريعة (4 Macros)
+          </h3>
+          <div id="macroSettingsList" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <!-- Dynamically injected -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 bg-navy-950/80 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <button id="resetDefaultsBtn" type="button"
+          class="px-3.5 py-2 rounded-xl bg-navy-900 hover:bg-rose-500/15 border border-slate-700 hover:border-rose-500/40 text-xs font-bold text-slate-300 hover:text-rose-300 transition">
+          استعادة الافتراضي
+        </button>
+
+        <div class="flex items-center gap-2">
+          <button id="cancelSettingsBtn" type="button"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs sm:text-sm font-bold text-slate-200 transition">
+            إلغاء
+          </button>
+          <button id="saveSettingsBtn" type="button"
+            class="px-5 py-2 rounded-xl bg-gradient-to-l from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-navy-950 text-xs sm:text-sm font-extrabold shadow-cyan-glow transition">
+            حفظ الإعدادات
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== TOAST NOTIFICATION CONTAINER ==================== -->
+  <div id="toastContainer" class="fixed bottom-4 left-4 right-4 sm:right-auto sm:w-80 z-50 pointer-events-none flex flex-col gap-2"></div>
+
+  <!-- ==================== APPLICATION LOGIC ==================== -->
+  <script>
+    (() => {
+      'use strict';
+
+      /* =====================================================================
+         1. CONSTANTS, HARDWARE PRESETS & DEFAULT CONFIG
+         ===================================================================== */
+      const STORAGE_KEY = 'ble_robot_arc_controller_v2';
+
+      const BLE_PRESETS = {
+        hm10: {
+          name: 'HM-10 / AT-09 / JDY-08',
+          service: '0000ffe0-0000-1000-8000-00805f9b34fb',
+          tx: '0000ffe1-0000-1000-8000-00805f9b34fb',
+          rx: '0000ffe1-0000-1000-8000-00805f9b34fb',
+        },
+        esp32: {
+          name: 'ESP32 / Nordic UART (NUS)',
+          service: '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+          tx: '6e400002-b5a3-f393-e0a9-e50e24dcca9e',
+          rx: '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
+        },
+      };
+
+      const DEFAULT_CONFIG = {
+        protocol: 'differential', // 'differential' (M:L,R) | 'chars' (8-way chars)
+        preset: 'hm10',
+        serviceUuid: BLE_PRESETS.hm10.service,
+        txUuid: BLE_PRESETS.hm10.tx,
+        rxUuid: BLE_PRESETS.hm10.rx,
+        appendNewline: true,
+        maxSpeed: 200,  // 0..255
+        arcRatio: 45,   // 0..80 (%)
+        commands: {
+          f: 'F',
+          b: 'B',
+          l: 'L',
+          r: 'R',
+          s: 'S',
+          fl: 'G', // Forward-Left Arc
+          fr: 'I', // Forward-Right Arc
+          bl: 'H', // Backward-Left Arc
+          br: 'J', // Backward-Right Arc
+          speedPrefix: 'V',
+          motorPrefix: 'M:',
+          joystickPrefix: 'J:',
+        },
+        macros: [
+          { label: 'إضاءة', cmd: 'L1', style: 'cyan' },
+          { label: 'زمور', cmd: 'H', style: 'amber' },
+          { label: 'سرعة تيربو', cmd: 'T', style: 'rose' },
+          { label: 'وضع تلقائي', cmd: 'A', style: 'emerald' },
+        ],
+      };
+
+      const MOTION_LABELS = {
+        s:  'توقف ■',
+        f:  'تقدم مستقيم ↑',
+        b:  'رجوع مستقيم ↓',
+        l:  'دوران لليسار ↺',
+        r:  'دوران لليمين ↻',
+        fl: 'قوس أمام - يسار ↖',
+        fr: 'قوس أمام - يمين ↗',
+        bl: 'قوس خلف - يسار ↙',
+        br: 'قوس خلف - يمين ↘',
+      };
+
+      /* =====================================================================
+         2. APPLICATION STATE
+         ===================================================================== */
+      let config = loadConfig();
+
+      const state = {
+        connection: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'demo'
+        device: null,
+        server: null,
+        txChar: null,
+        rxChar: null,
+        isWriting: false,
+        writeQueue: [], // { wireString, display, droppable, priority }
+        lastMotionFrame: null,
+
+        drivingMode: 'multitouch', // 'multitouch' | 'dpad8' | 'joystick'
+        activeDiscreteDir: 's',    // 's' | 'f' | 'b' | 'l' | 'r' | 'fl' | 'fr' | 'bl' | 'br'
+        currentL: 0,
+        currentR: 0,
+
+        // Multi-touch pointer tracking (independent pointerId -> control name)
+        mtPointers: new Map(), // Map<pointerId, 'forward'|'backward'|'left'|'right'>
+        pressedKeys: new Set(),
+
+        // D-Pad 8 tracking
+        d8PointerId: null,
+        d8ActiveBtn: null,
+
+        // Terminal & UI
+        txCount: 0,
+        rxCount: 0,
+        terminalCollapsed: false,
+        rxBuffer: '',
+        rxFlushTimer: null,
+        resetConfirmArmed: false,
+        resetConfirmTimer: null,
+      };
+
+      const textEncoder = new TextEncoder();
+      const textDecoder = new TextDecoder('utf-8');
+
+      /* =====================================================================
+         3. DOM REFERENCES
+         ===================================================================== */
+      const els = {
+        statusDot: document.getElementById('statusDot'),
+        statusText: document.getElementById('statusText'),
+        connectBtn: document.getElementById('connectBtn'),
+        connectBtnText: document.getElementById('connectBtnText'),
+        demoToggleBtn: document.getElementById('demoToggleBtn'),
+        openSettingsBtn: document.getElementById('openSettingsBtn'),
+        quickProtocolBtn: document.getElementById('quickProtocolBtn'),
+        quickProtocolLabel: document.getElementById('quickProtocolLabel'),
+        mobileProtocolBtn: document.getElementById('mobileProtocolBtn'),
+        mobileProtocolLabel: document.getElementById('mobileProtocolLabel'),
+
+        alertBanner: document.getElementById('alertBanner'),
+        alertTitle: document.getElementById('alertTitle'),
+        alertMessage: document.getElementById('alertMessage'),
+        bannerDemoBtn: document.getElementById('bannerDemoBtn'),
+        closeAlertBtn: document.getElementById('closeAlertBtn'),
+
+        leftMotorVal: document.getElementById('leftMotorVal'),
+        rightMotorVal: document.getElementById('rightMotorVal'),
+        leftMotorBar: document.getElementById('leftMotorBar'),
+        rightMotorBar: document.getElementById('rightMotorBar'),
+        motionStateLabel: document.getElementById('motionStateLabel'),
+        livePacketPill: document.getElementById('livePacketPill'),
+
+        panelMultitouch: document.getElementById('panelMultitouch'),
+        panelDpad8: document.getElementById('panelDpad8'),
+        panelJoystick: document.getElementById('panelJoystick'),
+        globalStopBtn: document.getElementById('globalStopBtn'),
+        mtStopBtn: document.getElementById('mtStopBtn'),
+        d8StopBtn: document.getElementById('d8StopBtn'),
+
+        joystickBase: document.getElementById('joystickBase'),
+        joystickPuck: document.getElementById('joystickPuck'),
+        joyVectorLine: document.getElementById('joyVectorLine'),
+        joyArcPath: document.getElementById('joyArcPath'),
+        joyXVal: document.getElementById('joyXVal'),
+        joyYVal: document.getElementById('joyYVal'),
+
+        speedSlider: document.getElementById('speedSlider'),
+        speedValueText: document.getElementById('speedValueText'),
+        speedPercentText: document.getElementById('speedPercentText'),
+        arcRatioSlider: document.getElementById('arcRatioSlider'),
+        arcRatioText: document.getElementById('arcRatioText'),
+        arcHintText: document.getElementById('arcHintText'),
+        actionButtonsGrid: document.getElementById('actionButtonsGrid'),
+
+        toggleTerminalBtn: document.getElementById('toggleTerminalBtn'),
+        terminalChevron: document.getElementById('terminalChevron'),
+        terminalBody: document.getElementById('terminalBody'),
+        terminalOutput: document.getElementById('terminalOutput'),
+        clearTerminalBtn: document.getElementById('clearTerminalBtn'),
+        txCount: document.getElementById('txCount'),
+        rxCount: document.getElementById('rxCount'),
+        manualSendForm: document.getElementById('manualSendForm'),
+        manualCmdInput: document.getElementById('manualCmdInput'),
+
+        settingsModal: document.getElementById('settingsModal'),
+        closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+        cancelSettingsBtn: document.getElementById('cancelSettingsBtn'),
+        saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+        resetDefaultsBtn: document.getElementById('resetDefaultsBtn'),
+        blePresetSelect: document.getElementById('blePresetSelect'),
+        serviceUuidInput: document.getElementById('serviceUuidInput'),
+        txUuidInput: document.getElementById('txUuidInput'),
+        rxUuidInput: document.getElementById('rxUuidInput'),
+        appendNewlineCheckbox: document.getElementById('appendNewlineCheckbox'),
+        cmdForward: document.getElementById('cmdForward'),
+        cmdBackward: document.getElementById('cmdBackward'),
+        cmdLeft: document.getElementById('cmdLeft'),
+        cmdRight: document.getElementById('cmdRight'),
+        cmdStop: document.getElementById('cmdStop'),
+        cmdFL: document.getElementById('cmdFL'),
+        cmdFR: document.getElementById('cmdFR'),
+        cmdBL: document.getElementById('cmdBL'),
+        cmdBR: document.getElementById('cmdBR'),
+        cmdSpeedPrefix: document.getElementById('cmdSpeedPrefix'),
+        cmdMotorPrefix: document.getElementById('cmdMotorPrefix'),
+        cmdJoystickPrefix: document.getElementById('cmdJoystickPrefix'),
+        macroSettingsList: document.getElementById('macroSettingsList'),
+
+        toastContainer: document.getElementById('toastContainer'),
+      };
+
+      /* =====================================================================
+         4. STORAGE & HELPER UTILITIES
+         ===================================================================== */
+      function deepClone(obj) {
+        return JSON.parse(JSON.stringify(obj));
+      }
+
+      function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+      }
+
+      function loadConfig() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return deepClone(DEFAULT_CONFIG);
+          const parsed = JSON.parse(raw);
+          return {
+            ...deepClone(DEFAULT_CONFIG),
+            ...parsed,
+            commands: { ...DEFAULT_CONFIG.commands, ...(parsed.commands || {}) },
+            macros: Array.isArray(parsed.macros) && parsed.macros.length === 4
+              ? parsed.macros
+              : deepClone(DEFAULT_CONFIG.macros),
+          };
+        } catch (_) {
+          return deepClone(DEFAULT_CONFIG);
+        }
+      }
+
+      function saveConfigToStorage() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        } catch (_) {
+          logTerminal('ERR', 'تعذر حفظ الإعدادات في localStorage');
+        }
+      }
+
+      function normalizeUuid(input) {
+        const cleaned = String(input || '').trim().toLowerCase().replace(/^0x/, '');
+        if (/^[0-9a-f]{4}$/.test(cleaned)) {
+          return `0000${cleaned}-0000-1000-8000-00805f9b34fb`;
+        }
+        return cleaned;
+      }
+
+      function isValidUuid(uuid) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
+      }
+
+      function vibrate(ms = 12) {
+        try {
+          if (navigator.vibrate) navigator.vibrate(ms);
+        } catch (_) {}
+      }
+
+      function getTimestamp() {
+        const d = new Date();
+        const pad = (n, len = 2) => String(n).padStart(len, '0');
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+      }
+
+      function showToast(message, type = 'info') {
+        const styles = {
+          info: 'bg-navy-850 border-cyan-500/40 text-cyan-100',
+          success: 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100',
+          warn: 'bg-amber-950/95 border-amber-500/50 text-amber-100',
+          error: 'bg-rose-950/95 border-rose-500/50 text-rose-100',
+        };
+        const toast = document.createElement('div');
+        toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold shadow-xl transition-all duration-300 opacity-0 translate-y-2 ${styles[type] || styles.info}`;
+        toast.textContent = message;
+        els.toastContainer.appendChild(toast);
+
+        requestAnimationFrame(() => toast.classList.remove('opacity-0', 'translate-y-2'));
+        setTimeout(() => {
+          toast.classList.add('opacity-0', 'translate-y-2');
+          setTimeout(() => toast.remove(), 300);
+        }, 2600);
+      }
+
+      function showAlertBanner(title, htmlMessage) {
+        els.alertTitle.textContent = title;
+        els.alertMessage.innerHTML = htmlMessage;
+        els.alertBanner.classList.remove('hidden');
+      }
+
+      /* =====================================================================
+         5. SERIAL MONITOR (TX / RX / SYS / ERR)
+         ===================================================================== */
+      function logTerminal(type, text) {
+        const line = document.createElement('div');
+        line.className = 'flex items-start gap-2 break-all';
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'text-slate-600 shrink-0 select-none';
+        timeSpan.textContent = `[${getTimestamp()}]`;
+
+        const tagSpan = document.createElement('span');
+        tagSpan.className = 'font-bold shrink-0 select-none';
+
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = text;
+
+        switch (type) {
+          case 'TX':
+            tagSpan.className += ' text-cyan-400';
+            tagSpan.textContent = 'TX >';
+            msgSpan.className = 'text-cyan-100';
+            state.txCount++;
+            els.txCount.textContent = state.txCount;
+            break;
+          case 'RX':
+            tagSpan.className += ' text-emerald-400';
+            tagSpan.textContent = 'RX <';
+            msgSpan.className = 'text-emerald-200';
+            state.rxCount++;
+            els.rxCount.textContent = state.rxCount;
+            break;
+          case 'ERR':
+            tagSpan.className += ' text-rose-400';
+            tagSpan.textContent = 'ERR !';
+            msgSpan.className = 'text-rose-200';
+            break;
+          default:
+            tagSpan.className += ' text-amber-400';
+            tagSpan.textContent = 'SYS *';
+            msgSpan.className = 'text-slate-300';
+            break;
+        }
+
+        line.append(timeSpan, tagSpan, msgSpan);
+        els.terminalOutput.appendChild(line);
+
+        while (els.terminalOutput.children.length > 250) {
+          els.terminalOutput.removeChild(els.terminalOutput.firstChild);
+        }
+        els.terminalOutput.scrollTop = els.terminalOutput.scrollHeight;
+      }
+
+      /* =====================================================================
+         6. ARC TURNING & DIFFERENTIAL MIXING ENGINE
+         ===================================================================== */
+
+      /**
+       * Computes exact Left & Right PWM (-255..255) for any of the 9 discrete states
+       * using current maxSpeed (V) and arcRatio (r = 0.0 .. 0.8).
+       */
+      function computeDiscreteMotors(dir) {
+        const V = clamp(Number(config.maxSpeed) || 0, 0, 255);
+        const r = clamp(Number(config.arcRatio) || 0, 0, 80) / 100;
+        const inner = Math.round(V * r);
+
+        switch (dir) {
+          case 'f':  return { l: V,      r: V };
+          case 'b':  return { l: -V,     r: -V };
+          case 'l':  return { l: -V,     r: V };
+          case 'r':  return { l: V,      r: -V };
+          case 'fr': return { l: V,      r: inner };
+          case 'fl': return { l: inner,  r: V };
+          case 'br': return { l: -V,     r: -inner };
+          case 'bl': return { l: -inner, r: -V };
+          default:   return { l: 0,      r: 0 };
+        }
+      }
+
+      /**
+       * Smooth continuous arcade-drive differential mixing for Analog Joystick.
+       * Inputs: nx (-1..1, right = +1), ny (-1..1, forward = +1).
+       * Normalizes diagonal angles smoothly while preserving radial throttle magnitude.
+       */
+      function computeJoystickMotors(nx, ny) {
+        const V = clamp(Number(config.maxSpeed) || 0, 0, 255);
+        const mag = Math.min(1, Math.hypot(nx, ny));
+        if (mag === 0 || V === 0) return { l: 0, r: 0 };
+
+        const rawL = ny + nx;
+        const rawR = ny - nx;
+        const maxAbs = Math.max(Math.abs(rawL), Math.abs(rawR));
+        if (maxAbs === 0) return { l: 0, r: 0 };
+
+        const scale = mag / maxAbs;
+        const l = clamp(Math.round(rawL * scale * V), -255, 255);
+        const r = clamp(Math.round(rawR * scale * V), -255, 255);
+        return { l, r };
+      }
+
+      /**
+       * Infers a clear Arabic movement state label from live Left & Right motor PWM.
+       */
+      function inferMotionLabelFromMotors(l, r) {
+        if (l === 0 && r === 0) return MOTION_LABELS.s;
+        if (l > 0 && r > 0) {
+          if (Math.abs(l - r) <= 12) return MOTION_LABELS.f;
+          return l > r ? MOTION_LABELS.fr : MOTION_LABELS.fl;
+        }
+        if (l < 0 && r < 0) {
+          if (Math.abs(l - r) <= 12) return MOTION_LABELS.b;
+          return Math.abs(l) > Math.abs(r) ? MOTION_LABELS.br : MOTION_LABELS.bl;
+        }
+        if (l > 0 && r <= 0) return l > Math.abs(r) * 1.4 ? MOTION_LABELS.fr : MOTION_LABELS.r;
+        if (r > 0 && l <= 0) return r > Math.abs(l) * 1.4 ? MOTION_LABELS.fl : MOTION_LABELS.l;
+        if (l < 0 && r >= 0) return Math.abs(l) > r * 1.4 ? MOTION_LABELS.br : MOTION_LABELS.l;
+        if (r < 0 && l >= 0) return Math.abs(r) > l * 1.4 ? MOTION_LABELS.bl : MOTION_LABELS.r;
+        return MOTION_LABELS.s;
+      }
+
+      /**
+       * Updates the Live Visual Motor & Arc Indicator Strip.
+       */
+      function updateMotorTelemetryUI(l, r, labelText, packetText) {
+        state.currentL = l;
+        state.currentR = r;
+
+        renderSingleMotorBar(els.leftMotorBar, els.leftMotorVal, l);
+        renderSingleMotorBar(els.rightMotorBar, els.rightMotorVal, r);
+
+        els.motionStateLabel.textContent = labelText || inferMotionLabelFromMotors(l, r);
+
+        if (l === 0 && r === 0) {
+          els.motionStateLabel.className = 'text-xs sm:text-sm font-extrabold text-slate-300 truncate max-w-full';
+        } else if (l >= 0 && r >= 0) {
+          els.motionStateLabel.className = 'text-xs sm:text-sm font-extrabold text-emerald-400 truncate max-w-full';
+        } else if (l <= 0 && r <= 0) {
+          els.motionStateLabel.className = 'text-xs sm:text-sm font-extrabold text-amber-400 truncate max-w-full';
+        } else {
+          els.motionStateLabel.className = 'text-xs sm:text-sm font-extrabold text-cyan-400 truncate max-w-full';
+        }
+
+        if (packetText !== undefined) {
+          els.livePacketPill.textContent = packetText;
+        }
+      }
+
+      function renderSingleMotorBar(barEl, valEl, pwm) {
+        const clamped = clamp(Math.round(pwm), -255, 255);
+        const pct = (Math.abs(clamped) / 255) * 50; // 0..50% from center
+
+        if (clamped > 0) {
+          barEl.style.left = '50%';
+          barEl.style.width = `${pct}%`;
+          barEl.className = 'absolute top-0 bottom-0 rounded-r-full transition-all duration-75 bg-gradient-to-r from-emerald-500 to-cyan-400';
+          valEl.textContent = `+${clamped}`;
+          valEl.className = 'font-mono text-xs sm:text-sm font-extrabold text-emerald-400';
+        } else if (clamped < 0) {
+          barEl.style.left = `${50 - pct}%`;
+          barEl.style.width = `${pct}%`;
+          barEl.className = 'absolute top-0 bottom-0 rounded-l-full transition-all duration-75 bg-gradient-to-l from-amber-500 to-rose-500';
+          valEl.textContent = `${clamped}`;
+          valEl.className = 'font-mono text-xs sm:text-sm font-extrabold text-amber-400';
+        } else {
+          barEl.style.left = '50%';
+          barEl.style.width = '0%';
+          valEl.textContent = '0';
+          valEl.className = 'font-mono text-xs sm:text-sm font-extrabold text-slate-400';
+        }
+      }
+
+      /**
+       * Dispatches a discrete 8-way direction (or 's' for stop) using the active protocol.
+       */
+      function applyDiscreteDirection(dir, { force = false } = {}) {
+        state.activeDiscreteDir = dir;
+        const { l, r } = computeDiscreteMotors(dir);
+        const label = MOTION_LABELS[dir] || MOTION_LABELS.s;
+        const isStop = dir === 's';
+
+        let frame;
+        if (config.protocol === 'differential') {
+          frame = `${config.commands.motorPrefix}${l},${r}`;
+        } else {
+          frame = config.commands[dir] || config.commands.s;
+        }
+
+        updateMotorTelemetryUI(l, r, label, frame);
+
+        if (isStop) {
+          sendCommand(frame, { priorityStop: true, force: true });
+        } else {
+          sendCommand(frame, { droppable: false, deduplicate: !force });
+        }
+      }
+
+      /**
+       * Emergency Stop: immediately flushes pending movement packets and sends Stop.
+       */
+      function triggerEmergencyStop() {
+        state.mtPointers.clear();
+        state.pressedKeys.clear();
+        clearMultiTouchHighlights();
+        clearD8Highlight();
+        if (joyState.active) resetJoystickVisualOnly();
+
+        state.activeDiscreteDir = 's';
+        const stopFrame = config.protocol === 'differential'
+          ? `${config.commands.motorPrefix}0,0`
+          : config.commands.s;
+
+        updateMotorTelemetryUI(0, 0, MOTION_LABELS.s, stopFrame);
+        vibrate(25);
+        sendCommand(stopFrame, { priorityStop: true, force: true });
+      }
+
+      /* =====================================================================
+         7. WEB BLUETOOTH ENGINE & PRIORITY SMART WRITE QUEUE
+         ===================================================================== */
+      function updateConnectionUI() {
+        const { connection, device } = state;
+
+        if (connection === 'demo') {
+          els.demoToggleBtn.className = 'px-2.5 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-bold border border-amber-500/50 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all flex items-center gap-1.5 active:scale-95';
+        } else {
+          els.demoToggleBtn.className = 'px-2.5 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-bold border border-slate-700 bg-navy-900 text-slate-300 hover:bg-navy-800 hover:text-white transition-all flex items-center gap-1.5 active:scale-95';
+        }
+
+        if (connection === 'connected') {
+          els.statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-emerald-glow animate-pulse shrink-0';
+          els.statusText.className = 'truncate max-w-[140px] sm:max-w-[230px] text-emerald-300';
+          els.statusText.textContent = `متصل: ${device?.name || 'جهاز BLE'}`;
+
+          els.connectBtn.disabled = false;
+          els.connectBtn.className = 'px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 transition-all flex items-center gap-1.5 active:scale-95';
+          els.connectBtnText.textContent = 'قطع الاتصال';
+        } else if (connection === 'connecting') {
+          els.statusDot.className = 'w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0';
+          els.statusText.className = 'truncate max-w-[140px] sm:max-w-[230px] text-cyan-300';
+          els.statusText.textContent = 'جاري الاتصال...';
+
+          els.connectBtn.disabled = true;
+          els.connectBtn.className = 'px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-800 border border-slate-700 text-slate-400 cursor-wait flex items-center gap-1.5';
+          els.connectBtnText.textContent = 'جاري الاتصال...';
+        } else if (connection === 'demo') {
+          els.statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0';
+          els.statusText.className = 'truncate max-w-[140px] sm:max-w-[230px] text-amber-300';
+          els.statusText.textContent = 'وضع التجربة (Demo)';
+
+          els.connectBtn.disabled = false;
+          els.connectBtn.className = 'px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-l from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-navy-950 shadow-cyan-glow transition-all flex items-center gap-1.5 active:scale-95';
+          els.connectBtnText.textContent = 'اتصال BLE';
+        } else {
+          els.statusDot.className = 'w-2 h-2 rounded-full bg-slate-500 shrink-0';
+          els.statusText.className = 'truncate max-w-[140px] sm:max-w-[230px] text-slate-400';
+          els.statusText.textContent = 'غير متصل';
+
+          els.connectBtn.disabled = false;
+          els.connectBtn.className = 'px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-l from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-navy-950 shadow-cyan-glow transition-all flex items-center gap-1.5 active:scale-95';
+          els.connectBtnText.textContent = 'اتصال BLE';
+        }
+      }
+
+      function updateProtocolBadges() {
+        const isDiff = config.protocol === 'differential';
+        els.quickProtocolLabel.textContent = isDiff ? 'خلط M:L,R' : 'أحرف 8 اتجاهات';
+        els.mobileProtocolLabel.textContent = isDiff ? 'خلط M:L,R' : 'أحرف 8 اتجاهات';
+
+        if (isDiff) {
+          els.quickProtocolBtn.className = 'hidden sm:flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-all active:scale-95';
+          els.mobileProtocolBtn.className = 'px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 font-mono text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/25 transition active:scale-95';
+        } else {
+          els.quickProtocolBtn.className = 'hidden sm:flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 transition-all active:scale-95';
+          els.mobileProtocolBtn.className = 'px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/40 font-mono text-[10px] font-bold text-cyan-300 hover:bg-cyan-500/25 transition active:scale-95';
+        }
+
+        // Update idle packet indicator
+        if (state.activeDiscreteDir === 's' && !joyState.active) {
+          els.livePacketPill.textContent = isDiff ? `${config.commands.motorPrefix}0,0` : config.commands.s;
+        }
+      }
+
+      function toggleProtocolQuick() {
+        config.protocol = config.protocol === 'differential' ? 'chars' : 'differential';
+        saveConfigToStorage();
+        state.lastMotionFrame = null;
+        updateProtocolBadges();
+        vibrate(14);
+        const label = config.protocol === 'differential'
+          ? 'بروتوكول خلط المحركات (M:L,R)'
+          : 'بروتوكول الأحرف القياسي (8 اتجاهات)';
+        showToast(`تم التبديل إلى: ${label}`, 'info');
+        logTerminal('SYS', `Protocol switched -> ${config.protocol === 'differential' ? 'Differential (M:L,R)' : '8-Way Chars'}`);
+      }
+
+      function checkBleSupportOnLoad() {
+        if (!('bluetooth' in navigator)) {
+          showAlertBanner(
+            'Web Bluetooth غير مدعوم في هذا المتصفح',
+            'متصفحك الحالي لا يدعم Web Bluetooth API. للاتصال الحقيقي بالروبوت افتح الرابط عبر <strong>Google Chrome</strong> على أندرويد (عبر <strong>HTTPS</strong>). يمكنك تجربة الالتفاف القوسي والمحركات الآن عبر <strong>وضع التجربة (Demo)</strong>.'
+          );
+          logTerminal('SYS', 'Web Bluetooth unavailable. Demo Mode ready for full testing.');
+        } else if (!window.isSecureContext) {
+          showAlertBanner(
+            'مطلوب اتصال آمن (HTTPS)',
+            'يعمل Web Bluetooth فقط عبر روابط <strong>HTTPS</strong> أو <strong>localhost</strong>. ارفع الملف على GitHub Pages أو فعّل وضع التجربة الآن.'
+          );
+          logTerminal('SYS', 'Insecure context detected. HTTPS required for Web Bluetooth.');
+        } else {
+          logTerminal('SYS', 'BLE Arc Controller ready. Press "اتصال BLE" or activate Demo Mode.');
+        }
+      }
+
+      async function connectBle() {
+        if (!('bluetooth' in navigator)) {
+          showAlertBanner(
+            'Web Bluetooth غير متاح',
+            'يرجى استخدام <strong>Google Chrome</strong> على أندرويد عبر رابط <strong>HTTPS</strong>، أو تفعيل <strong>وضع التجربة</strong>.'
+          );
+          showToast('Web Bluetooth غير مدعوم هنا', 'error');
+          return;
+        }
+
+        const serviceUuid = normalizeUuid(config.serviceUuid);
+        const txUuid = normalizeUuid(config.txUuid);
+        const rxUuid = normalizeUuid(config.rxUuid);
+
+        if (!isValidUuid(serviceUuid) || !isValidUuid(txUuid) || !isValidUuid(rxUuid)) {
+          showToast('تحقق من صيغة عناوين UUID في الإعدادات', 'error');
+          logTerminal('ERR', 'Invalid UUID configuration.');
+          return;
+        }
+
+        try {
+          state.connection = 'connecting';
+          updateConnectionUI();
+          logTerminal('SYS', `Scanning BLE (Service: ${serviceUuid})...`);
+
+          const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [serviceUuid],
+          });
+
+          state.device = device;
+          device.removeEventListener('gattserverdisconnected', handleGattDisconnected);
+          device.addEventListener('gattserverdisconnected', handleGattDisconnected);
+
+          logTerminal('SYS', `Connecting GATT -> "${device.name || 'BLE Robot'}"...`);
+          const server = await device.gatt.connect();
+          state.server = server;
+
+          const service = await server.getPrimaryService(serviceUuid);
+          const txChar = await service.getCharacteristic(txUuid);
+          state.txChar = txChar;
+
+          const writeType = txChar.properties.writeWithoutResponse ? 'WriteWithoutResponse' : 'WriteWithResponse';
+          logTerminal('SYS', `TX Ready (${txUuid.slice(0, 8)}...) [${writeType}]`);
+
+          try {
+            const rxChar = rxUuid === txUuid ? txChar : await service.getCharacteristic(rxUuid);
+            state.rxChar = rxChar;
+            if (rxChar.properties.notify || rxChar.properties.indicate) {
+              rxChar.removeEventListener('characteristicvaluechanged', handleRxNotification);
+              rxChar.addEventListener('characteristicvaluechanged', handleRxNotification);
+              await rxChar.startNotifications();
+              logTerminal('SYS', `RX Notify active (${rxUuid.slice(0, 8)}...)`);
+            }
+          } catch (rxErr) {
+            logTerminal('SYS', `RX skipped (TX-only): ${rxErr.message}`);
+          }
+
+          state.connection = 'connected';
+          state.writeQueue = [];
+          state.isWriting = false;
+          state.lastMotionFrame = null;
+          els.alertBanner.classList.add('hidden');
+          updateConnectionUI();
+          vibrate(25);
+          showToast(`تم الاتصال بـ ${device.name || 'الروبوت'}`, 'success');
+        } catch (err) {
+          cleanupBleRefs();
+          state.connection = 'disconnected';
+          updateConnectionUI();
+
+          if (err.name === 'NotFoundError') {
+            logTerminal('SYS', 'BLE picker cancelled.');
+            return;
+          }
+
+          logTerminal('ERR', `BLE Error (${err.name}): ${err.message}`);
+          if (err.name === 'SecurityError' || /permissions policy|disallowed/i.test(err.message)) {
+            showAlertBanner(
+              'البلوتوث مقيد داخل نافذة المعاينة (iFrame)',
+              'احفظ الملف وارفعه على رابط <strong>HTTPS</strong> وافتحه مباشرة في <strong>Chrome</strong>، أو اختبره الآن بـ <strong>وضع التجربة</strong>.'
+            );
+          } else {
+            showToast(`فشل الاتصال: ${err.message}`, 'error');
+          }
+        }
+      }
+
+      function disconnectBle() {
+        try {
+          if (state.rxChar) {
+            state.rxChar.removeEventListener('characteristicvaluechanged', handleRxNotification);
+          }
+          if (state.device && state.device.gatt && state.device.gatt.connected) {
+            state.device.gatt.disconnect();
+          }
+        } catch (err) {
+          logTerminal('ERR', `Disconnect error: ${err.message}`);
+        } finally {
+          cleanupBleRefs();
+          state.connection = 'disconnected';
+          updateConnectionUI();
+          logTerminal('SYS', 'Disconnected from BLE device.');
+          showToast('تم قطع الاتصال', 'info');
+        }
+      }
+
+      function handleGattDisconnected() {
+        const name = state.device?.name || 'BLE Device';
+        cleanupBleRefs();
+        if (state.connection !== 'demo') {
+          state.connection = 'disconnected';
+          updateConnectionUI();
+        }
+        logTerminal('SYS', `Lost connection with ${name}.`);
+        showToast('انقطع الاتصال بالروبوت', 'warn');
+      }
+
+      function cleanupBleRefs() {
+        state.server = null;
+        state.txChar = null;
+        state.rxChar = null;
+        state.writeQueue = [];
+        state.isWriting = false;
+        state.lastMotionFrame = null;
+      }
+
+      function handleRxNotification(event) {
+        try {
+          const chunk = textDecoder.decode(event.target.value, { stream: true });
+          state.rxBuffer += chunk;
+          clearTimeout(state.rxFlushTimer);
+
+          if (state.rxBuffer.includes('\n')) {
+            const lines = state.rxBuffer.split(/\r?\n/);
+            state.rxBuffer = lines.pop();
+            lines.forEach((line) => {
+              if (line.length > 0) logTerminal('RX', line);
+            });
+          }
+
+          if (state.rxBuffer.length > 0) {
+            state.rxFlushTimer = setTimeout(() => {
+              if (state.rxBuffer.length > 0) {
+                logTerminal('RX', state.rxBuffer);
+                state.rxBuffer = '';
+              }
+            }, 120);
+          }
+        } catch (err) {
+          logTerminal('ERR', `RX decode error: ${err.message}`);
+        }
+      }
+
+      /**
+       * Smart BLE Write Queue:
+       * - Deduplicates identical consecutive frames when `deduplicate: true`
+       * - Priority-flushes all queued movement packets on Stop (`priorityStop: true`)
+       * - Replaces stale droppable frames during joystick/slider streaming
+       * - Automatically chunks >20-byte payloads & falls back across write methods
+       */
+      function sendCommand(rawCommand, { droppable = false, deduplicate = false, priorityStop = false, force = false } = {}) {
+        const cleanCmd = String(rawCommand ?? '');
+        if (!cleanCmd) return;
+
+        if (deduplicate && !force && !priorityStop && cleanCmd === state.lastMotionFrame) {
+          return;
+        }
+
+        els.livePacketPill.textContent = cleanCmd;
+
+        if (priorityStop || !droppable) {
+          state.lastMotionFrame = priorityStop ? cleanCmd : (deduplicate ? cleanCmd : null);
+        } else {
+          state.lastMotionFrame = cleanCmd;
+        }
+
+        // Demo Mode Simulation
+        if (state.connection === 'demo') {
+          logTerminal('TX', cleanCmd + (config.appendNewline ? '\\n' : ''));
+          if (priorityStop || (!droppable && !deduplicate)) {
+            setTimeout(() => {
+              if (state.connection === 'demo') {
+                logTerminal('RX', `ACK:${cleanCmd}`);
+              }
+            }, 40);
+          }
+          return;
+        }
+
+        // Disconnected Guard
+        if (state.connection !== 'connected' || !state.txChar) {
+          if (!droppable && !priorityStop) {
+            showToast('غير متصل! اضغط "اتصال BLE" أو فعّل "وضع التجربة"', 'warn');
+          }
+          return;
+        }
+
+        const wireString = config.appendNewline ? `${cleanCmd}\n` : cleanCmd;
+
+        if (priorityStop) {
+          // Flush all pending movement commands so Stop executes immediately
+          state.writeQueue = [{ wireString, display: cleanCmd, droppable: false, priority: true }];
+        } else if (droppable) {
+          const idx = state.writeQueue.findIndex((item) => item.droppable);
+          if (idx !== -1) {
+            state.writeQueue[idx] = { wireString, display: cleanCmd, droppable: true, priority: false };
+          } else {
+            state.writeQueue.push({ wireString, display: cleanCmd, droppable: true, priority: false });
+          }
+        } else {
+          state.writeQueue = state.writeQueue.filter((item) => !item.droppable);
+          state.writeQueue.push({ wireString, display: cleanCmd, droppable: false, priority: false });
+        }
+
+        processWriteQueue();
+      }
+
+      async function processWriteQueue() {
+        if (state.isWriting || state.writeQueue.length === 0) return;
+        if (state.connection !== 'connected' || !state.txChar) {
+          state.writeQueue = [];
+          return;
+        }
+
+        state.isWriting = true;
+        const item = state.writeQueue.shift();
+
+        try {
+          const bytes = textEncoder.encode(item.wireString);
+          const CHUNK_SIZE = 20;
+          for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
+            await writeCharacteristicChunk(state.txChar, bytes.slice(offset, offset + CHUNK_SIZE));
+          }
+          logTerminal('TX', item.display + (config.appendNewline ? '\\n' : ''));
+        } catch (err) {
+          logTerminal('ERR', `Write failed ("${item.display}"): ${err.message}`);
+        } finally {
+          state.isWriting = false;
+          if (state.writeQueue.length > 0) {
+            processWriteQueue();
+          }
+        }
+      }
+
+      async function writeCharacteristicChunk(characteristic, bytes) {
+        if (characteristic.properties.writeWithoutResponse && typeof characteristic.writeValueWithoutResponse === 'function') {
+          try {
+            await characteristic.writeValueWithoutResponse(bytes);
+            return;
+          } catch (_) {
+            // Fallback below if browser/stack rejects writeWithoutResponse
+          }
+        }
+        if (typeof characteristic.writeValueWithResponse === 'function') {
+          await characteristic.writeValueWithResponse(bytes);
+        } else {
+          await characteristic.writeValue(bytes);
+        }
+      }
+
+      function toggleDemoMode(forceEnable = null) {
+        const shouldEnable = forceEnable !== null ? forceEnable : state.connection !== 'demo';
+        if (shouldEnable) {
+          if (state.connection === 'connected') disconnectBle();
+          state.connection = 'demo';
+          state.lastMotionFrame = null;
+          els.alertBanner.classList.add('hidden');
+          updateConnectionUI();
+          vibrate(15);
+          logTerminal('SYS', 'Demo Mode ON — All Arc Turns, Multi-Touch & L/R PWM gauges live.');
+          logTerminal('RX', 'ARC_ROBOT_READY [DEMO]');
+          showToast('تم تفعيل وضع التجربة (Demo)', 'warn');
+        } else {
+          state.connection = 'disconnected';
+          state.lastMotionFrame = null;
+          updateConnectionUI();
+          logTerminal('SYS', 'Demo Mode OFF.');
+          showToast('تم إيقاف وضع التجربة', 'info');
+        }
+      }
+
+      /* =====================================================================
+         8. SWITCHABLE 3 DRIVING MODES
+         ===================================================================== */
+      function setDrivingMode(mode) {
+        // Safely stop any active motion before switching layouts
+        if (state.activeDiscreteDir !== 's' || joyState.active) {
+          triggerEmergencyStop();
+        }
+
+        state.drivingMode = mode;
+
+        els.panelMultitouch.classList.toggle('hidden', mode !== 'multitouch');
+        els.panelDpad8.classList.toggle('hidden', mode !== 'dpad8');
+        els.panelJoystick.classList.toggle('hidden', mode !== 'joystick');
+
+        document.querySelectorAll('.mode-tab').forEach((tab) => {
+          const isActive = tab.dataset.mode === mode;
+          tab.className = isActive
+            ? 'mode-tab px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-all text-center bg-cyan-500/20 text-cyan-300 border border-cyan-500/45 shadow-sm'
+            : 'mode-tab px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center text-slate-400 hover:text-slate-200 border border-transparent';
+        });
+      }
+
+      /* =====================================================================
+         9. MODE 1: MULTI-TOUCH CAR DRIVE + SIMULTANEOUS KEYBOARD
+         ===================================================================== */
+      const mtButtons = document.querySelectorAll('.mt-btn');
+
+      function clearMultiTouchHighlights() {
+        mtButtons.forEach((btn) => setMtButtonVisual(btn, false));
+      }
+
+      function setMtButtonVisual(btn, active) {
+        const type = btn.dataset.mt;
+        const isSteer = type === 'left' || type === 'right';
+        const isBack = type === 'backward';
+
+        btn.classList.remove(
+          'bg-cyan-500/25', 'border-cyan-400', 'text-cyan-200', 'shadow-cyan-glow',
+          'bg-emerald-500/25', 'border-emerald-400', 'text-emerald-200', 'shadow-emerald-glow',
+          'bg-amber-500/25', 'border-amber-400', 'text-amber-200', 'shadow-amber-glow',
+          'scale-95', 'bg-navy-850', 'border-slate-700/90', 'text-slate-200'
+        );
+
+        if (active) {
+          if (isSteer) {
+            btn.classList.add('bg-emerald-500/25', 'border-emerald-400', 'text-emerald-200', 'shadow-emerald-glow', 'scale-95');
+          } else if (isBack) {
+            btn.classList.add('bg-amber-500/25', 'border-amber-400', 'text-amber-200', 'shadow-amber-glow', 'scale-95');
+          } else {
+            btn.classList.add('bg-cyan-500/25', 'border-cyan-400', 'text-cyan-200', 'shadow-cyan-glow', 'scale-95');
+          }
+        } else {
+          btn.classList.add('bg-navy-850', 'border-slate-700/90', 'text-slate-200');
+        }
+      }
+
+      /**
+       * Combines all active multi-touch pointers AND simultaneous keyboard keys
+       * into a single directional/arc state (f, b, l, r, fl, fr, bl, br, or s).
+       */
+      function evaluateCombinedDriveInput() {
+        let forward = false;
+        let backward = false;
+        let left = false;
+        let right = false;
+
+        // Collect from independent touch pointers
+        state.mtPointers.forEach((ctrl) => {
+          if (ctrl === 'forward') forward = true;
+          if (ctrl === 'backward') backward = true;
+          if (ctrl === 'left') left = true;
+          if (ctrl === 'right') right = true;
+        });
+
+        // Collect from simultaneous keyboard keys
+        if (state.pressedKeys.has('ArrowUp') || state.pressedKeys.has('KeyW')) forward = true;
+        if (state.pressedKeys.has('ArrowDown') || state.pressedKeys.has('KeyS')) backward = true;
+        if (state.pressedKeys.has('ArrowLeft') || state.pressedKeys.has('KeyA')) left = true;
+        if (state.pressedKeys.has('ArrowRight') || state.pressedKeys.has('KeyD')) right = true;
+
+        // Sync visual highlights on multi-touch pedals
+        mtButtons.forEach((btn) => {
+          const ctrl = btn.dataset.mt;
+          const active = (ctrl === 'forward' && forward) ||
+                         (ctrl === 'backward' && backward) ||
+                         (ctrl === 'left' && left) ||
+                         (ctrl === 'right' && right);
+          setMtButtonVisual(btn, active);
+        });
+
+        // Resolve orthogonal axes (opposite keys cancel out safely)
+        const throttle = (forward ? 1 : 0) - (backward ? 1 : 0);
+        const steer = (right ? 1 : 0) - (left ? 1 : 0);
+
+        let dir = 's';
+        if (throttle === 1 && steer === 0) dir = 'f';
+        else if (throttle === -1 && steer === 0) dir = 'b';
+        else if (throttle === 0 && steer === -1) dir = 'l';
+        else if (throttle === 0 && steer === 1) dir = 'r';
+        else if (throttle === 1 && steer === -1) dir = 'fl';
+        else if (throttle === 1 && steer === 1) dir = 'fr';
+        else if (throttle === -1 && steer === -1) dir = 'bl';
+        else if (throttle === -1 && steer === 1) dir = 'br';
+
+        // Sync visual highlight on 8-way D-Pad if keyboard is used in D-Pad mode
+        if (state.drivingMode === 'dpad8' && state.d8PointerId === null) {
+          clearD8Highlight();
+          if (dir !== 's') {
+            const btn = document.querySelector(`.d8-btn[data-d8="${dir}"]`);
+            if (btn) setD8ButtonVisual(btn, true);
+          }
+        }
+
+        if (dir !== state.activeDiscreteDir) {
+          applyDiscreteDirection(dir);
+        }
+      }
+
+      mtButtons.forEach((btn) => {
+        const ctrl = btn.dataset.mt;
+
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+          state.mtPointers.set(e.pointerId, ctrl);
+          vibrate(10);
+          evaluateCombinedDriveInput();
+        });
+
+        const releasePointer = (e) => {
+          if (!state.mtPointers.has(e.pointerId)) return;
+          e.preventDefault();
+          state.mtPointers.delete(e.pointerId);
+          evaluateCombinedDriveInput();
+        };
+
+        btn.addEventListener('pointerup', releasePointer);
+        btn.addEventListener('pointercancel', releasePointer);
+        btn.addEventListener('lostpointercapture', releasePointer);
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+      });
+
+      /* =====================================================================
+         10. MODE 2: 8-WAY DIRECTIONAL D-PAD (WITH CURVED ARC BUTTONS)
+         ===================================================================== */
+      const d8Buttons = document.querySelectorAll('.d8-btn');
+
+      function setD8ButtonVisual(btn, active) {
+        btn.classList.remove('bg-cyan-500/25', 'border-cyan-400', 'shadow-cyan-glow', 'scale-95', 'bg-navy-850', 'bg-navy-850/90');
+        if (active) {
+          btn.classList.add('bg-cyan-500/25', 'border-cyan-400', 'shadow-cyan-glow', 'scale-95');
+        } else {
+          btn.classList.add('bg-navy-850');
+        }
+      }
+
+      function clearD8Highlight() {
+        d8Buttons.forEach((b) => setD8ButtonVisual(b, false));
+        state.d8ActiveBtn = null;
+      }
+
+      d8Buttons.forEach((btn) => {
+        const dir = btn.dataset.d8;
+
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          state.d8PointerId = e.pointerId;
+          clearD8Highlight();
+          state.d8ActiveBtn = btn;
+          setD8ButtonVisual(btn, true);
+          vibrate(10);
+          applyDiscreteDirection(dir, { force: true });
+        });
+
+        const releaseD8 = (e) => {
+          if (state.d8PointerId !== e.pointerId && state.d8ActiveBtn !== btn) return;
+          e.preventDefault();
+          state.d8PointerId = null;
+          clearD8Highlight();
+          applyDiscreteDirection('s', { force: true });
+        };
+
+        btn.addEventListener('pointerup', releaseD8);
+        btn.addEventListener('pointercancel', releaseD8);
+        btn.addEventListener('pointerleave', (e) => {
+          if (state.d8ActiveBtn === btn) releaseD8(e);
+        });
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+      });
+
+      /* =====================================================================
+         11. DESKTOP KEYBOARD SUPPORT (SIMULTANEOUS WASD / ARROWS + SPACE)
+         ===================================================================== */
+      const DRIVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
+
+      window.addEventListener('keydown', (e) => {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (!els.settingsModal.classList.contains('hidden')) return;
+
+        if (e.code === 'Space') {
+          e.preventDefault();
+          triggerEmergencyStop();
+          return;
+        }
+
+        if (!DRIVE_KEYS.has(e.code)) return;
+        e.preventDefault();
+        if (state.pressedKeys.has(e.code)) return;
+
+        state.pressedKeys.add(e.code);
+        evaluateCombinedDriveInput();
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (!state.pressedKeys.has(e.code)) return;
+        state.pressedKeys.delete(e.code);
+        evaluateCombinedDriveInput();
+      });
+
+      // Safety failsafe if app loses focus or switches tabs
+      window.addEventListener('blur', () => {
+        if (state.activeDiscreteDir !== 's' || joyState.active || state.mtPointers.size > 0 || state.pressedKeys.size > 0) {
+          triggerEmergencyStop();
+        }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && (state.activeDiscreteDir !== 's' || joyState.active)) {
+          triggerEmergencyStop();
+        }
+      });
+
+      /* =====================================================================
+         12. MODE 3: HIGH-PRECISION ANALOG JOYSTICK WITH ARC VECTOR
+         ===================================================================== */
+      const joyState = {
+        active: false,
+        pointerId: null,
+        nx: 0, // -1..1
+        ny: 0, // -1..1
+        lastSendTime: 0,
+        throttleTimer: null,
+      };
+
+      const JOY_DEADZONE = 0.08; // 8% circular deadzone
+      const JOY_THROTTLE_MS = 60;
+
+      function updateJoystickVisualAndMix(clientX, clientY) {
+        const rect = els.joystickBase.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const puckRadius = els.joystickPuck.offsetWidth / 2;
+        const maxRadius = Math.max(12, rect.width / 2 - puckRadius - 6);
+
+        let dx = clientX - cx;
+        let dy = clientY - cy;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > maxRadius) {
+          const angle = Math.atan2(dy, dx);
+          dx = Math.cos(angle) * maxRadius;
+          dy = Math.sin(angle) * maxRadius;
+        }
+
+        els.joystickPuck.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+
+        let nx = dx / maxRadius;
+        let ny = -dy / maxRadius; // Up is +Y
+
+        if (Math.hypot(nx, ny) < JOY_DEADZONE) {
+          nx = 0;
+          ny = 0;
+        }
+
+        joyState.nx = nx;
+        joyState.ny = ny;
+
+        const ix = Math.round(nx * 100);
+        const iy = Math.round(ny * 100);
+        els.joyXVal.textContent = ix;
+        els.joyYVal.textContent = iy;
+
+        // Draw live vector & quadratic arc guide in SVG (-100..100 space)
+        const svgX = (dx / maxRadius) * 68;
+        const svgY = (dy / maxRadius) * 68;
+        els.joyVectorLine.setAttribute('x2', svgX.toFixed(1));
+        els.joyVectorLine.setAttribute('y2', svgY.toFixed(1));
+
+        if (Math.abs(ix) > 10 && Math.abs(iy) > 10) {
+          // Subtle curved arc indicator from origin curving toward steering side
+          const ctrlX = 0;
+          const ctrlY = svgY * 0.85;
+          els.joyArcPath.setAttribute('d', `M 0 0 Q ${ctrlX.toFixed(1)} ${ctrlY.toFixed(1)} ${svgX.toFixed(1)} ${svgY.toFixed(1)}`);
+        } else {
+          els.joyArcPath.setAttribute('d', '');
+        }
+
+        // Compute live differential motor preview immediately at 60fps
+        const { l, r } = computeJoystickMotors(nx, ny);
+        const frame = config.protocol === 'differential'
+          ? `${config.commands.motorPrefix}${l},${r}`
+          : `${config.commands.joystickPrefix}${ix},${iy}`;
+
+        updateMotorTelemetryUI(l, r, inferMotionLabelFromMotors(l, r), frame);
+        scheduleJoystickTransmit();
+      }
+
+      function scheduleJoystickTransmit() {
+        const now = performance.now();
+        const elapsed = now - joyState.lastSendTime;
+
+        const transmit = () => {
+          if (!joyState.active) return;
+          joyState.lastSendTime = performance.now();
+          const { l, r } = computeJoystickMotors(joyState.nx, joyState.ny);
+          const ix = Math.round(joyState.nx * 100);
+          const iy = Math.round(joyState.ny * 100);
+
+          const frame = config.protocol === 'differential'
+            ? `${config.commands.motorPrefix}${l},${r}`
+            : `${config.commands.joystickPrefix}${ix},${iy}`;
+
+          sendCommand(frame, { droppable: true, deduplicate: true });
+        };
+
+        if (elapsed >= JOY_THROTTLE_MS) {
+          clearTimeout(joyState.throttleTimer);
+          joyState.throttleTimer = null;
+          transmit();
+        } else if (!joyState.throttleTimer) {
+          joyState.throttleTimer = setTimeout(() => {
+            joyState.throttleTimer = null;
+            transmit();
+          }, JOY_THROTTLE_MS - elapsed);
+        }
+      }
+
+      function resetJoystickVisualOnly() {
+        joyState.active = false;
+        joyState.pointerId = null;
+        joyState.nx = 0;
+        joyState.ny = 0;
+        clearTimeout(joyState.throttleTimer);
+        joyState.throttleTimer = null;
+
+        els.joystickPuck.classList.add('joystick-spring');
+        els.joystickPuck.style.transform = 'translate3d(0px, 0px, 0px)';
+        els.joyXVal.textContent = '0';
+        els.joyYVal.textContent = '0';
+        els.joyVectorLine.setAttribute('x2', '0');
+        els.joyVectorLine.setAttribute('y2', '0');
+        els.joyArcPath.setAttribute('d', '');
+      }
+
+      function endJoystickInteraction() {
+        if (!joyState.active) return;
+        resetJoystickVisualOnly();
+
+        const stopFrame = config.protocol === 'differential'
+          ? `${config.commands.motorPrefix}0,0`
+          : config.commands.s;
+
+        updateMotorTelemetryUI(0, 0, MOTION_LABELS.s, stopFrame);
+
+        if (config.protocol === 'chars') {
+          // Ensure joystick-only parsers receive center, followed by priority Stop
+          sendCommand(`${config.commands.joystickPrefix}0,0`, { droppable: false });
+        }
+        sendCommand(stopFrame, { priorityStop: true, force: true });
+      }
+
+      els.joystickBase.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        joyState.active = true;
+        joyState.pointerId = e.pointerId;
+        try { els.joystickBase.setPointerCapture(e.pointerId); } catch (_) {}
+        els.joystickPuck.classList.remove('joystick-spring');
+        vibrate(10);
+        updateJoystickVisualAndMix(e.clientX, e.clientY);
+      });
+
+      els.joystickBase.addEventListener('pointermove', (e) => {
+        if (!joyState.active || e.pointerId !== joyState.pointerId) return;
+        e.preventDefault();
+        updateJoystickVisualAndMix(e.clientX, e.clientY);
+      });
+
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((evt) => {
+        els.joystickBase.addEventListener(evt, (e) => {
+          if (!joyState.active || e.pointerId !== joyState.pointerId) return;
+          e.preventDefault();
+          endJoystickInteraction();
+        });
+      });
+
+      els.joystickBase.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      /* =====================================================================
+         13. SPEED SLIDER, ARC RATIO SLIDER & 4 QUICK MACROS
+         ===================================================================== */
+      let speedThrottleTimer = null;
+      let lastSpeedSendTime = 0;
+
+      function updateSpeedUI(val) {
+        const num = clamp(Math.round(Number(val) || 0), 0, 255);
+        config.maxSpeed = num;
+        els.speedSlider.value = num;
+        els.speedValueText.textContent = num;
+        els.speedPercentText.textContent = `(${Math.round((num / 255) * 100)}%)`;
+        return num;
+      }
+
+      function handleSpeedChange(val, { immediate = false } = {}) {
+        const num = updateSpeedUI(val);
+        saveConfigToStorage();
+
+        // If robot is currently moving in discrete mode, update its motors live
+        if (state.activeDiscreteDir !== 's') {
+          applyDiscreteDirection(state.activeDiscreteDir, { force: true });
+        }
+
+        // In 8-way chars protocol, transmit V<0-255> command (throttled)
+        if (config.protocol === 'chars') {
+          const cmd = `${config.commands.speedPrefix}${num}`;
+          if (immediate) {
+            clearTimeout(speedThrottleTimer);
+            speedThrottleTimer = null;
+            lastSpeedSendTime = performance.now();
+            sendCommand(cmd, { droppable: false, deduplicate: true });
+            return;
+          }
+
+          const now = performance.now();
+          const elapsed = now - lastSpeedSendTime;
+          if (elapsed >= 60) {
+            clearTimeout(speedThrottleTimer);
+            speedThrottleTimer = null;
+            lastSpeedSendTime = now;
+            sendCommand(cmd, { droppable: true, deduplicate: true });
+          } else if (!speedThrottleTimer) {
+            speedThrottleTimer = setTimeout(() => {
+              speedThrottleTimer = null;
+              lastSpeedSendTime = performance.now();
+              sendCommand(`${config.commands.speedPrefix}${config.maxSpeed}`, { droppable: true, deduplicate: true });
+            }, 60 - elapsed);
+          }
+        }
+      }
+
+      function updateArcRatioUI(val) {
+        const ratio = clamp(Math.round(Number(val) || 0), 0, 80);
+        config.arcRatio = ratio;
+        els.arcRatioSlider.value = ratio;
+        els.arcRatioText.textContent = `${ratio}%`;
+
+        let desc = 'قوس متوازن';
+        if (ratio === 0) desc = 'التفاف حاد حول العجلة الداخلية (Pivot)';
+        else if (ratio <= 25) desc = 'قوس ضيق وحاد';
+        else if (ratio >= 65) desc = 'قوس واسع وناعم جداً';
+        els.arcHintText.textContent = `${desc} — سرعة الداخلية ${ratio}%`;
+
+        saveConfigToStorage();
+
+        // Update live if currently executing an arc turn
+        if (state.activeDiscreteDir !== 's') {
+          applyDiscreteDirection(state.activeDiscreteDir, { force: true });
+        }
+      }
+
+      els.speedSlider.addEventListener('input', (e) => handleSpeedChange(e.target.value, { immediate: false }));
+      els.speedSlider.addEventListener('change', (e) => handleSpeedChange(e.target.value, { immediate: true }));
+
+      document.querySelectorAll('.speed-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          vibrate(10);
+          handleSpeedChange(btn.dataset.speed, { immediate: true });
+        });
+      });
+
+      els.arcRatioSlider.addEventListener('input', (e) => updateArcRatioUI(e.target.value));
+
+      // Render 4 Action Macro Buttons
+      const MACRO_THEMES = {
+        cyan: {
+          btn: 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/35 text-cyan-200',
+          badge: 'bg-cyan-500/20 text-cyan-300',
+          icon: '<path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"></path>',
+        },
+        amber: {
+          btn: 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/35 text-amber-200',
+          badge: 'bg-amber-500/20 text-amber-300',
+          icon: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>',
+        },
+        rose: {
+          btn: 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/40 text-rose-200',
+          badge: 'bg-rose-500/20 text-rose-300',
+          icon: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
+        },
+        emerald: {
+          btn: 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/35 text-emerald-200',
+          badge: 'bg-emerald-500/20 text-emerald-300',
+          icon: '<circle cx="12" cy="12" r="3"></circle><path d="M12 2v3"></path><path d="M12 19v3"></path><path d="m4.93 4.93 2.12 2.12"></path><path d="m16.95 16.95 2.12 2.12"></path><path d="M2 12h3"></path><path d="M19 12h3"></path>',
+        },
+      };
+
+      function renderActionMacros() {
+        els.actionButtonsGrid.innerHTML = '';
+        const order = ['cyan', 'amber', 'rose', 'emerald'];
+
+        config.macros.forEach((macro, idx) => {
+          const styleKey = macro.style || order[idx % order.length];
+          const theme = MACRO_THEMES[styleKey] || MACRO_THEMES.cyan;
+
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `p-3 rounded-2xl border flex flex-col justify-between gap-2 text-right transition-all active:scale-95 control-surface ${theme.btn}`;
+          btn.innerHTML = `
+            <div class="flex items-center justify-between w-full">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                ${theme.icon}
+              </svg>
+              <span class="px-2 py-0.5 rounded-md font-mono text-[11px] font-bold ${theme.badge}" dir="ltr"></span>
+            </div>
+            <span class="text-xs sm:text-sm font-extrabold truncate w-full"></span>
+          `;
+          btn.querySelector('span[dir="ltr"]').textContent = macro.cmd || '-';
+          btn.querySelector('span.truncate').textContent = macro.label || `أمر ${idx + 1}`;
+
+          btn.addEventListener('click', () => {
+            vibrate(14);
+            sendCommand(macro.cmd, { droppable: false, force: true });
+          });
+
+          els.actionButtonsGrid.appendChild(btn);
+        });
+      }
+
+      /* =====================================================================
+         14. SETTINGS MODAL
+         ===================================================================== */
+      function populateSettingsForm(cfg) {
+        const radio = document.querySelector(`input[name="protocolMode"][value="${cfg.protocol}"]`);
+        if (radio) radio.checked = true;
+
+        els.blePresetSelect.value = cfg.preset || 'custom';
+        els.serviceUuidInput.value = cfg.serviceUuid;
+        els.txUuidInput.value = cfg.txUuid;
+        els.rxUuidInput.value = cfg.rxUuid;
+        els.appendNewlineCheckbox.checked = Boolean(cfg.appendNewline);
+
+        els.cmdForward.value = cfg.commands.f;
+        els.cmdBackward.value = cfg.commands.b;
+        els.cmdLeft.value = cfg.commands.l;
+        els.cmdRight.value = cfg.commands.r;
+        els.cmdStop.value = cfg.commands.s;
+        els.cmdFL.value = cfg.commands.fl;
+        els.cmdFR.value = cfg.commands.fr;
+        els.cmdBL.value = cfg.commands.bl;
+        els.cmdBR.value = cfg.commands.br;
+        els.cmdSpeedPrefix.value = cfg.commands.speedPrefix;
+        els.cmdMotorPrefix.value = cfg.commands.motorPrefix;
+        els.cmdJoystickPrefix.value = cfg.commands.joystickPrefix;
+
+        els.macroSettingsList.innerHTML = '';
+        cfg.macros.forEach((macro, idx) => {
+          const card = document.createElement('div');
+          card.className = 'p-2.5 rounded-xl bg-navy-950/80 border border-slate-800 flex items-center gap-2';
+          card.innerHTML = `
+            <div class="flex-1">
+              <label class="block text-[10px] text-slate-400 mb-1">اسم الزر ${idx + 1}</label>
+              <input data-macro-label="${idx}" type="text" class="w-full px-2.5 py-1.5 rounded-lg bg-navy-900 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs text-white" />
+            </div>
+            <div class="w-24">
+              <label class="block text-[10px] text-slate-400 mb-1">الأمر</label>
+              <input data-macro-cmd="${idx}" type="text" dir="ltr" class="w-full px-2.5 py-1.5 rounded-lg bg-navy-900 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-mono text-center text-cyan-300" />
+            </div>
+          `;
+          card.querySelector(`[data-macro-label="${idx}"]`).value = macro.label;
+          card.querySelector(`[data-macro-cmd="${idx}"]`).value = macro.cmd;
+          els.macroSettingsList.appendChild(card);
+        });
+
+        disarmResetButton();
+      }
+
+      function openSettingsModal() {
+        populateSettingsForm(config);
+        els.settingsModal.classList.remove('hidden');
+      }
+
+      function closeSettingsModal() {
+        els.settingsModal.classList.add('hidden');
+        disarmResetButton();
+      }
+
+      function disarmResetButton() {
+        state.resetConfirmArmed = false;
+        clearTimeout(state.resetConfirmTimer);
+        els.resetDefaultsBtn.textContent = 'استعادة الافتراضي';
+        els.resetDefaultsBtn.classList.remove('bg-rose-600', 'text-white', 'border-rose-500');
+      }
+
+      els.blePresetSelect.addEventListener('change', () => {
+        const key = els.blePresetSelect.value;
+        if (BLE_PRESETS[key]) {
+          els.serviceUuidInput.value = BLE_PRESETS[key].service;
+          els.txUuidInput.value = BLE_PRESETS[key].tx;
+          els.rxUuidInput.value = BLE_PRESETS[key].rx;
+        }
+      });
+
+      [els.serviceUuidInput, els.txUuidInput, els.rxUuidInput].forEach((input) => {
+        input.addEventListener('input', () => { els.blePresetSelect.value = 'custom'; });
+      });
+
+      els.saveSettingsBtn.addEventListener('click', () => {
+        const serviceUuid = normalizeUuid(els.serviceUuidInput.value);
+        const txUuid = normalizeUuid(els.txUuidInput.value);
+        const rxUuid = normalizeUuid(els.rxUuidInput.value);
+
+        if (!isValidUuid(serviceUuid) || !isValidUuid(txUuid) || !isValidUuid(rxUuid)) {
+          showToast('صيغة UUID غير صالحة! استخدم 128-bit أو 4 خانات مثل ffe0', 'error');
+          return;
+        }
+
+        const selectedProtocol = document.querySelector('input[name="protocolMode"]:checked')?.value || 'differential';
+        const updatedMacros = config.macros.map((m, idx) => ({
+          ...m,
+          label: els.macroSettingsList.querySelector(`[data-macro-label="${idx}"]`).value.trim() || `زر ${idx + 1}`,
+          cmd: els.macroSettingsList.querySelector(`[data-macro-cmd="${idx}"]`).value.trim() || 'S',
+        }));
+
+        config = {
+          ...config,
+          protocol: selectedProtocol,
+          preset: els.blePresetSelect.value,
+          serviceUuid,
+          txUuid,
+          rxUuid,
+          appendNewline: els.appendNewlineCheckbox.checked,
+          commands: {
+            f: els.cmdForward.value.trim() || 'F',
+            b: els.cmdBackward.value.trim() || 'B',
+            l: els.cmdLeft.value.trim() || 'L',
+            r: els.cmdRight.value.trim() || 'R',
+            s: els.cmdStop.value.trim() || 'S',
+            fl: els.cmdFL.value.trim() || 'G',
+            fr: els.cmdFR.value.trim() || 'I',
+            bl: els.cmdBL.value.trim() || 'H',
+            br: els.cmdBR.value.trim() || 'J',
+            speedPrefix: els.cmdSpeedPrefix.value.trim() || 'V',
+            motorPrefix: els.cmdMotorPrefix.value.trim() || 'M:',
+            joystickPrefix: els.cmdJoystickPrefix.value.trim() || 'J:',
+          },
+          macros: updatedMacros,
+        };
+
+        state.lastMotionFrame = null;
+        saveConfigToStorage();
+        updateProtocolBadges();
+        renderActionMacros();
+        closeSettingsModal();
+        showToast('تم حفظ الإعدادات بنجاح', 'success');
+        logTerminal('SYS', `Settings saved (Protocol: ${config.protocol}, Preset: ${config.preset.toUpperCase()})`);
+      });
+
+      els.resetDefaultsBtn.addEventListener('click', () => {
+        if (!state.resetConfirmArmed) {
+          state.resetConfirmArmed = true;
+          els.resetDefaultsBtn.textContent = 'اضغط مجدداً للتأكيد';
+          els.resetDefaultsBtn.classList.add('bg-rose-600', 'text-white', 'border-rose-500');
+          state.resetConfirmTimer = setTimeout(disarmResetButton, 4000);
+          return;
+        }
+
+        config = deepClone(DEFAULT_CONFIG);
+        state.lastMotionFrame = null;
+        saveConfigToStorage();
+        populateSettingsForm(config);
+        updateSpeedUI(config.maxSpeed);
+        updateArcRatioUI(config.arcRatio);
+        updateProtocolBadges();
+        renderActionMacros();
+        showToast('تمت استعادة الإعدادات الافتراضية', 'info');
+        logTerminal('SYS', 'Factory defaults restored.');
+      });
+
+      /* =====================================================================
+         15. EVENT WIRING & BOOTSTRAP
+         ===================================================================== */
+      els.connectBtn.addEventListener('click', () => {
+        if (state.connection === 'connected') disconnectBle();
+        else connectBle();
+      });
+
+      els.demoToggleBtn.addEventListener('click', () => toggleDemoMode());
+      els.bannerDemoBtn.addEventListener('click', () => toggleDemoMode(true));
+      els.closeAlertBtn.addEventListener('click', () => els.alertBanner.classList.add('hidden'));
+
+      els.quickProtocolBtn.addEventListener('click', toggleProtocolQuick);
+      els.mobileProtocolBtn.addEventListener('click', toggleProtocolQuick);
+
+      els.openSettingsBtn.addEventListener('click', openSettingsModal);
+      els.closeSettingsBtn.addEventListener('click', closeSettingsModal);
+      els.cancelSettingsBtn.addEventListener('click', closeSettingsModal);
+      els.settingsModal.addEventListener('click', (e) => {
+        if (e.target === els.settingsModal) closeSettingsModal();
+      });
+
+      document.querySelectorAll('.mode-tab').forEach((tab) => {
+        tab.addEventListener('click', () => setDrivingMode(tab.dataset.mode));
+      });
+
+      [els.globalStopBtn, els.mtStopBtn, els.d8StopBtn].forEach((btn) => {
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          triggerEmergencyStop();
+        });
+      });
+
+      els.toggleTerminalBtn.addEventListener('click', () => {
+        state.terminalCollapsed = !state.terminalCollapsed;
+        els.terminalBody.classList.toggle('hidden', state.terminalCollapsed);
+        els.terminalChevron.style.transform = state.terminalCollapsed ? 'rotate(180deg)' : 'rotate(0deg)';
+      });
+
+      els.clearTerminalBtn.addEventListener('click', () => {
+        els.terminalOutput.innerHTML = '';
+        state.txCount = 0;
+        state.rxCount = 0;
+        els.txCount.textContent = '0';
+        els.rxCount.textContent = '0';
+      });
+
+      els.manualSendForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const cmd = els.manualCmdInput.value.trim();
+        if (!cmd) return;
+        sendCommand(cmd, { droppable: false, force: true });
+        els.manualCmdInput.value = '';
+      });
+
+      // Initialize UI
+      updateSpeedUI(config.maxSpeed);
+      updateArcRatioUI(config.arcRatio);
+      updateProtocolBadges();
+      renderActionMacros();
+      setDrivingMode('multitouch');
+      updateMotorTelemetryUI(0, 0, MOTION_LABELS.s, config.protocol === 'differential' ? `${config.commands.motorPrefix}0,0` : config.commands.s);
+      updateConnectionUI();
+      checkBleSupportOnLoad();
+    })();
+  </script>
+</body>
+</html>
